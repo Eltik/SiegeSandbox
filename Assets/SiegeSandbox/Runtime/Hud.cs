@@ -15,7 +15,7 @@ namespace SiegeSandbox
         bool hitKill;
         string lastHit = "";
         float lastHitTime = -10f;
-        GUIStyle label, right, center;
+        GUIStyle label, right, center, topRight;
         int styledForHeight;
 
         void OnEnable() { Target.Damaged += OnDamaged; }
@@ -47,6 +47,7 @@ namespace SiegeSandbox
             label.normal.textColor = Color.white;
             right = new GUIStyle(label) { alignment = TextAnchor.LowerRight, fontSize = Mathf.RoundToInt(size * 1.6f) };
             center = new GUIStyle(label) { alignment = TextAnchor.MiddleCenter };
+            topRight = new GUIStyle(label) { alignment = TextAnchor.UpperRight, fontSize = Mathf.Max(10, Mathf.RoundToInt(size * 0.85f)) };
         }
 
         static void Fill(float x, float y, float w, float h, Color c)
@@ -125,6 +126,18 @@ namespace SiegeSandbox
                 (aim > 0.5f ? "    ADS" : "") + (player.IsSprinting ? "    SPRINT" : "") + (player.IsVaulting ? "    VAULT" : (player.IsGrounded ? "" : "    AIR"));
             Shadowed(new Rect(pad, h - line * 3.4f - pad, 900f * unit, line * 3.4f), state, label);
 
+            // Debug read-outs, top right: where the last world sound came from, and what the mouse is doing.
+            if (showHelp)
+            {
+                string heard = Time.time - Sfx.LastWorldTime < 4f
+                    ? "Heard: " + Sfx.LastWorldSound + "  (" + Sfx.Describe(Sfx.LastPath) + ")"
+                    : "Heard: -";
+                string mouse = !player.useDeviceInput ? "Mouse: scripted input"
+                    : "Mouse: " + (player.HasMouse ? "captured" : "free (click the view)") +
+                      "    moving " + player.RawMouseDelta.x.ToString("0") + ", " + player.RawMouseDelta.y.ToString("0");
+                Shadowed(new Rect(w - 900f * unit - pad, pad, 900f * unit, line * 2.6f), heard + "\n" + mouse, topRight);
+            }
+
             if (Time.time - lastHitTime < 2f)
                 Shadowed(new Rect(cx - 300f * unit, cy + 60f * unit, 600f * unit, line * 1.4f), lastHit, center);
 
@@ -157,7 +170,7 @@ namespace SiegeSandbox
                 }
             }
 
-            if (player.useDeviceInput && Cursor.lockState != CursorLockMode.Locked)
+            if (player.useDeviceInput && !player.HasMouse)
                 Shadowed(new Rect(cx - 300f * unit, cy - 90f * unit, 600f * unit, line * 1.4f), "Click to play", center);
         }
     }

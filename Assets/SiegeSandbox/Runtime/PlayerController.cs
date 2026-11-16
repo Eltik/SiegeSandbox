@@ -126,6 +126,15 @@ namespace SiegeSandbox
         Vector2 recoilPending;      // x = yaw right, y = pitch up
         float leanToggleState;
         bool fireBlockedUntilRelease;
+
+        /// <summary>
+        /// True once the player has clicked into the game and it owns the mouse. Tracked here
+        /// rather than read back from Cursor.lockState, which the editor can report as locked
+        /// before the Game view has really taken the pointer.
+        /// </summary>
+        public bool HasMouse { get; private set; }
+        /// <summary>The last raw mouse movement read from the device, for the on-screen input readout.</summary>
+        public Vector2 RawMouseDelta { get; private set; }
         float lastGroundedTime = -10f, lastJumpTime = -10f, jumpBufferedUntil = -1f;
         bool wasGrounded = true;
         float landDip, bobPhase, bobWeight;
@@ -150,7 +159,6 @@ namespace SiegeSandbox
 
         void Start()
         {
-            if (useDeviceInput) LockCursor(true);
             Sfx.Warm(); // build the sounds now rather than on the first shot
         }
 
@@ -192,14 +200,20 @@ namespace SiegeSandbox
             Mouse mouse = Mouse.current;
             PlayerInputState s = new PlayerInputState();
 
-            if (kb != null && kb.escapeKey.wasPressedThisFrame) LockCursor(false);
-            bool locked = Cursor.lockState == CursorLockMode.Locked;
-            if (!locked && mouse != null && mouse.leftButton.wasPressedThisFrame)
+            // The game takes the mouse on a click and gives it back on Escape or when the window loses focus.
+            if (HasMouse && ((kb != null && kb.escapeKey.wasPressedThisFrame) || !Application.isFocused))
             {
-                LockCursor(true);
-                fireBlockedUntilRelease = true;
-                locked = true;
+                HasMouse = false;
+                LockCursor(false);
             }
+            else if (!HasMouse && mouse != null && mouse.leftButton.wasPressedThisFrame && Application.isFocused)
+            {
+                HasMouse = true;
+                fireBlockedUntilRelease = true; // the click that grabs the mouse is not a shot
+            }
+            // Keep asserting the lock: the editor drops it on its own in several situations.
+            if (HasMouse && Cursor.lockState != CursorLockMode.Locked) LockCursor(true);
+            bool locked = HasMouse;
 
             if (kb != null && locked)
             {
@@ -226,9 +240,10 @@ namespace SiegeSandbox
                 }
             }
 
+            RawMouseDelta = mouse != null ? mouse.delta.ReadValue() : Vector2.zero;
             if (mouse != null && locked)
             {
-                s.look = mouse.delta.ReadValue();
+                s.look = RawMouseDelta;
                 s.aim = mouse.rightButton.isPressed;
                 if (fireBlockedUntilRelease && !mouse.leftButton.isPressed) fireBlockedUntilRelease = false;
                 s.fire = mouse.leftButton.isPressed && !fireBlockedUntilRelease;
@@ -346,6 +361,7 @@ namespace SiegeSandbox
                     vy = Mathf.Sqrt(2f * jumpHeight * -gravity);
                     jumpStartY = transform.position.y;
                     Sfx.PlayLocal(SoundId.Jump, 0.6f);
+                    Sfx.PlayLocal(SoundId.GearRattle, 0.5f);
                     lastJumpTime = Time.time;
                     lastGroundedTime = -10f;
                     grounded = false;
@@ -380,6 +396,7 @@ namespace SiegeSandbox
             {
                 landDip = Mathf.Clamp(-vy * 0.012f, 0f, 0.12f);
                 Sfx.PlayLocal(SoundId.Land, Mathf.Clamp01(-vy / 9f));
+                Sfx.PlayLocal(SoundId.GearRattle, Mathf.Clamp01(-vy / 9f) * 0.7f, 0.95f, 0.03f);
             }
             wasGrounded = nowGrounded;
             IsGrounded = nowGrounded;
@@ -401,7 +418,11 @@ namespace SiegeSandbox
                 {
                     stepTimer = 0f;
                     if (Stance == Stance.Prone) Sfx.PlayLocal(SoundId.Crawl, 0.35f);
-                    else if (IsSprinting) Sfx.PlayLocal(SoundId.Footstep, 1f, 1.05f);
+                    else if (IsSprinting)
+                    {
+                        Sfx.PlayLocal(SoundId.Footstep, 1f, 1.05f);
+                        Sfx.PlayLocal(SoundId.GearRattle, 0.4f, 1f, 0.04f); // running is loud: boots and everything strapped to you
+                    }
                     else if (Stance == Stance.Crouch) Sfx.PlayLocal(SoundId.Footstep, 0.2f, 0.9f);
                     else Sfx.PlayLocal(SoundId.Footstep, Mathf.Lerp(0.6f, 0.35f, AimBlend), 0.95f);
                 }
