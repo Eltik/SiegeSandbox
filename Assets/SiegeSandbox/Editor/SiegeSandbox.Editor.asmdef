@@ -1,0 +1,7 @@
+{
+    "name": "SiegeSandbox.Editor",
+    "rootNamespace": "SiegeSandbox.EditorTools",
+    "references": ["SiegeSandbox.Runtime", "Unity.InputSystem", "UnityEditor.TestRunner", "UnityEngine.TestRunner"],
+    "includePlatforms": ["Editor"],
+    "autoReferenced": true
+}

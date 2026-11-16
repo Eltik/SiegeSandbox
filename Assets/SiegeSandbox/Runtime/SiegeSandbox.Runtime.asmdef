@@ -1,0 +1,6 @@
+{
+    "name": "SiegeSandbox.Runtime",
+    "rootNamespace": "SiegeSandbox",
+    "references": ["Unity.InputSystem"],
+    "autoReferenced": true
+}

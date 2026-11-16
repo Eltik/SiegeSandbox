@@ -1,0 +1,10 @@
+{
+    "name": "SiegeSandbox.Tests",
+    "rootNamespace": "SiegeSandbox.Tests",
+    "references": ["SiegeSandbox.Runtime", "UnityEngine.TestRunner", "UnityEditor.TestRunner"],
+    "includePlatforms": [],
+    "overrideReferences": true,
+    "precompiledReferences": ["nunit.framework.dll"],
+    "autoReferenced": false,
+    "defineConstraints": ["UNITY_INCLUDE_TESTS"]
+}
