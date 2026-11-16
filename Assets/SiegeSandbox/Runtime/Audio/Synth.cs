@@ -20,6 +20,7 @@ namespace SiegeSandbox
             {
                 case SoundId.GunShot: return 3;
                 case SoundId.Footstep:
+                case SoundId.FootstepRun:
                 case SoundId.NpcFootstep: return 4;
                 case SoundId.ImpactHard:
                 case SoundId.ImpactWood:
@@ -152,6 +153,7 @@ namespace SiegeSandbox
                     return Finish(b, 0.6f, 0f);
 
                 case SoundId.Footstep:
+                case SoundId.FootstepRun:
                 case SoundId.NpcFootstep:
                     b = Buf(0.18f);
                     Noise(b, 0f, 0.12f, 1f, 0.002f, 0.03f, 420f + 40f * v, 0f);       // heel

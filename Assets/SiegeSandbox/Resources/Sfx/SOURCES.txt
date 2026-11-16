@@ -1,0 +1,37 @@
+WHERE THE RECORDINGS COME FROM
+
+The clips in these folders are cut from free packs by Tools/build_sounds.py. The raw packs are
+kept out of the repository in AudioSources/. Open Siege Sandbox > Sound Board in Unity to hear
+each clip and to swap in your own.
+
+1. Snake's Authentic Gun Sounds, by SnakeF8 (F8 Studios)
+   https://f8studios.itch.io/snakes-authentic-gun-sounds
+   Terms on the page: free; "All sounds can be used commercially, and credit is not needed".
+   Used for: GunShot (5.56 rifle, close, without the room), TailOutdoor, MagOut, MagIn,
+   BoltBack, BoltForward. TailSmall and TailRoom are the same dry shot run through a generated
+   room response.
+
+2. The Free Firearm Sound Library, by Ben Jaszczak, Brian Nelson, Kevin Heras, Matthew Nanney
+   https://opengameart.org/content/the-free-firearm-sound-library      Licence: CC0.
+   Used for: TailOutdoor (second variation) and Echo (AR-15, near and mid distance).
+
+3. Essentials Series (Footsteps Essentials), by Nox Sound
+   https://nox-sound-design.itch.io/essentials-series-sfx-nox-sound    Licence: CC0.
+   Used for: Footstep, FootstepRun, NpcFootstep, Jump, Land (boots on a hard floor), and as raw
+   material for Crawl, ImpactHard, ImpactFlesh, Headshot, BodyFall.
+
+4. 100 CC0 metal and wood SFX, by rubberduck
+   https://opengameart.org/content/100-cc0-metal-and-wood-sfx          Licence: CC0.
+   Used for: PlankBreak, BarricadeCollapse, Hammer, WallPunch, Pry, BarricadeUnroll, ImpactWood,
+   ImpactSoftWall, MagDrop.
+
+5. SFX Packs (Gun Pack v1), by Cyber Apps
+   https://cyberofficial.itch.io/sfx-pack
+   Terms on the page: "free to use where ever, just give credit". CREDIT REQUIRED: Cyber Apps.
+   Used for: ShellCasing, DryFire.
+
+Stand-ins, where no pack has a recording of the real event (marked in the Sound Board):
+bullet impacts (ImpactHard, ImpactWood, ImpactSoftWall, ImpactFlesh, Headshot), Crawl, BodyFall,
+MagDrop, BarricadeUnroll.
+
+Still synthesized in code: Cloth, GearRattle, MeleeSwing, HitTick.

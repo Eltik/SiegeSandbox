@@ -23,7 +23,14 @@ namespace SiegeSandbox.Tests
             Assert.IsNotNull(weapon, "no Weapon in the Sandbox scene");
             player.useDeviceInput = false;
             player.input = new PlayerInputState();
+            AudioListener.volume = 0f; // the tests play the game at speed; nobody needs to hear that
             yield return null;
+        }
+
+        [TearDown]
+        public void RestoreSound()
+        {
+            AudioListener.volume = 1f;
         }
 
         IEnumerator TapCrouch()
@@ -722,6 +729,7 @@ namespace SiegeSandbox.Tests
         {
             yield return new WaitForSeconds(0.3f);
             Sfx.ResetCounts();
+            Assert.GreaterOrEqual(Sfx.RecordedSounds, 20, "the recorded clips in Resources/Sfx should have replaced the synthesized stand-ins");
 
             // Every shot is heard, and every casing lands.
             int shots0 = weapon.ShotsFired;
@@ -751,7 +759,7 @@ namespace SiegeSandbox.Tests
             s.sprint = true;
             player.input = s;
             yield return new WaitForSeconds(1.5f);
-            Assert.Greater(Sfx.PlayCount(SoundId.Footstep), walking, "sprinting should step faster than walking");
+            Assert.Greater(Sfx.PlayCount(SoundId.FootstepRun), walking, "sprinting should step faster than walking");
             s.sprint = false;
             s.move = Vector2.zero;
             player.input = s;

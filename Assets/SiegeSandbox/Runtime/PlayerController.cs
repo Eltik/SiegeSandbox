@@ -132,7 +132,7 @@ namespace SiegeSandbox
         /// rather than read back from Cursor.lockState, which the editor can report as locked
         /// before the Game view has really taken the pointer.
         /// </summary>
-        public bool HasMouse { get; private set; }
+        public bool HasMouse { get { return MouseCapture.Active; } }
         /// <summary>The last raw mouse movement read from the device, for the on-screen input readout.</summary>
         public Vector2 RawMouseDelta { get; private set; }
         float lastGroundedTime = -10f, lastJumpTime = -10f, jumpBufferedUntil = -1f;
@@ -167,6 +167,11 @@ namespace SiegeSandbox
             if (Instance == this) Instance = null;
         }
 
+        void OnDisable()
+        {
+            if (useDeviceInput) MouseCapture.Release(); // never walk away still holding the mouse
+        }
+
         void Update()
         {
             float dt = Time.deltaTime;
@@ -188,12 +193,6 @@ namespace SiegeSandbox
 
         // ------------------------------------------------------------------ input
 
-        static void LockCursor(bool locked)
-        {
-            Cursor.lockState = locked ? CursorLockMode.Locked : CursorLockMode.None;
-            Cursor.visible = !locked;
-        }
-
         void ReadDeviceInput()
         {
             Keyboard kb = Keyboard.current;
@@ -203,17 +202,16 @@ namespace SiegeSandbox
             // The game takes the mouse on a click and gives it back on Escape or when the window loses focus.
             if (HasMouse && ((kb != null && kb.escapeKey.wasPressedThisFrame) || !Application.isFocused))
             {
-                HasMouse = false;
-                LockCursor(false);
+                MouseCapture.Release();
             }
             else if (!HasMouse && mouse != null && mouse.leftButton.wasPressedThisFrame && Application.isFocused)
             {
-                HasMouse = true;
+                MouseCapture.Take();
                 fireBlockedUntilRelease = true; // the click that grabs the mouse is not a shot
             }
-            // Keep asserting the lock: the editor drops it on its own in several situations.
-            if (HasMouse && Cursor.lockState != CursorLockMode.Locked) LockCursor(true);
             bool locked = HasMouse;
+            Vector2 turn = MouseCapture.Read(mouse); // also keeps the pointer held, and notices if it is not
+            InputDiagnostics.Tick(mouse, Yaw);
 
             if (kb != null && locked)
             {
@@ -240,10 +238,10 @@ namespace SiegeSandbox
                 }
             }
 
-            RawMouseDelta = mouse != null ? mouse.delta.ReadValue() : Vector2.zero;
+            RawMouseDelta = MouseCapture.RawDelta;
             if (mouse != null && locked)
             {
-                s.look = RawMouseDelta;
+                s.look = turn;
                 s.aim = mouse.rightButton.isPressed;
                 if (fireBlockedUntilRelease && !mouse.leftButton.isPressed) fireBlockedUntilRelease = false;
                 s.fire = mouse.leftButton.isPressed && !fireBlockedUntilRelease;
@@ -420,7 +418,7 @@ namespace SiegeSandbox
                     if (Stance == Stance.Prone) Sfx.PlayLocal(SoundId.Crawl, 0.35f);
                     else if (IsSprinting)
                     {
-                        Sfx.PlayLocal(SoundId.Footstep, 1f, 1.05f);
+                        Sfx.PlayLocal(SoundId.FootstepRun, 1f);
                         Sfx.PlayLocal(SoundId.GearRattle, 0.4f, 1f, 0.04f); // running is loud: boots and everything strapped to you
                     }
                     else if (Stance == Stance.Crouch) Sfx.PlayLocal(SoundId.Footstep, 0.2f, 0.9f);

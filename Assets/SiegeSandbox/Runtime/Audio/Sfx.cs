@@ -81,6 +81,12 @@ namespace SiegeSandbox
             for (int i = 0; i < playCounts.Length; i++) playCounts[i] = 0;
         }
 
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        static void FullVolumeOnPlay()
+        {
+            AudioListener.volume = 1f; // in case a test run was stopped half-way with the sound off
+        }
+
         static Sfx Get()
         {
             if (instance == null)

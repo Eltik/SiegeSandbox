@@ -17,3 +17,6 @@
 *.slnx
 *.user
 .DS_Store
+
+# Raw downloaded recordings (the trimmed clips the game uses live in Assets/SiegeSandbox/Resources/Sfx)
+/AudioSources/

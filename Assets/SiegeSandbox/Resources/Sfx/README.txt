@@ -14,7 +14,7 @@ applied to whatever is in the folder.
 Sound names:
 
   Weapon      GunShot  ShellCasing  DryFire  MagOut  MagIn  MagDrop  BoltBack  BoltForward
-  Movement    Footstep  NpcFootstep  Crawl  Land  Jump  Cloth  GearRattle  MeleeSwing
+  Movement    Footstep  FootstepRun  NpcFootstep  Crawl  Land  Jump  Cloth  GearRattle  MeleeSwing
   Impacts     ImpactHard  ImpactWood  ImpactSoftWall  ImpactFlesh  Headshot  HitTick
   Destruction WallPunch  PlankBreak  BarricadeCollapse  Hammer  BarricadeUnroll  Pry  BodyFall
   Reflections TailSmall  TailRoom  TailOutdoor  Echo
