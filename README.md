@@ -84,9 +84,11 @@ Open `Assets/SiegeSandbox/Scenes/Sandbox.unity` and press Play.
   is still moving. Sprinting, jumping and vaulting straighten you up.
 - **Crawl spaces.** The low tunnel has 0.8 m of headroom: only a prone player fits, and you
   cannot stand up inside it.
-- **Reloads are staged.** The gun cants, the old magazine drops, a new one is pushed in and
-  the rounds only count once it seats. Reloading from empty also charges the bolt and takes
-  longer (`Weapon.reloadTime` vs `Weapon.emptyReloadTime`). You cannot fire or aim mid-reload.
+- **Reloads are staged.** The support hand does the work: it reaches for the magazine,
+  pulls it, stows it, brings a fresh one up, seats it and slaps it home, and the gun kicks
+  as it seats. The rounds only count once it seats. Reloading from empty drops the spent
+  magazine on the floor, racks the bolt and takes longer (`Weapon.reloadTime` vs
+  `Weapon.emptyReloadTime`). You cannot fire or aim mid-reload.
 - **Sprint has weight.** Head and weapon bob scale with speed, the view widens slightly, and
   the gun has to come back up before it can fire.
 
@@ -96,20 +98,40 @@ platform and a ramp.
 
 ## Sound
 
-There are no audio files: every sound is synthesized at startup (`Synth`) from layered noise
-bursts and sine sweeps, with a few variants each. The weapon has a layered shot, brass hitting
-the floor, a dry-fire click and a reload you can hear in parts (magazine out, magazine in,
-bolt back and forward when it ran dry). Footsteps change rate and loudness with stance and
-speed (crouching is nearly silent, crawling drags). Impacts differ by surface (hard wall,
-wood, soft wall, body), headshots have their own ping, and barricades and walls have their
-own hammering, unrolling, prying, splintering and collapsing sounds.
+### How sound travels
 
-World sounds are routed the way Siege routes them (`Sfx.Evaluate`). If the straight line to
-you is blocked, the sound looks for the cheapest route through an opening (`SoundPortal`:
-doorways, windows, the tops of walls, the crawl tunnel, holes punched in soft walls), is
-heard from that opening's direction, and loses level and treble for the detour. Wood and
-soft walls let sound through muffled; a missing board or a hole lets it through clean. With
-no route at all you get a faint low thud through the wall.
+World sounds are routed the way Siege's audio team describes routing theirs (`Sfx.Evaluate`).
+
+- **Propagation nodes.** The level is covered in nodes (`SoundPortal`): doorways, windows,
+  the ends and tops of walls, the crawl tunnel, and every hole knocked in a soft wall. Nodes
+  that can hear each other are linked into a graph.
+- **Obstruction.** If the straight line to you is blocked, the sound takes the cheapest route
+  through the graph, across as many nodes as it needs. A route costs its length, the angles
+  it turns through and whatever it squeezes past. You hear it from the direction of the last
+  node, as far away as the whole route is long, with treble taken off for the bending.
+- **Occlusion.** What leaks straight through the wall is played as well, from where the sound
+  really is, filtered by the materials in the way: glass and wood take a little, soft wall
+  more, metal a lot, concrete nearly everything. The two versions play together, which is
+  what lets you place a sound behind a wall.
+- **Destruction changes the routes at once.** A hole or a missing board opens a way; each
+  board on a barricade takes level and treble off what comes through the opening.
+- **Reflection.** Loud sounds get a reverb tail chosen by probing the space around the source
+  (tight, room, open air), played from the source's position, plus an echo off the nearest
+  far wall outdoors, delayed by the distance.
+- **No ambience bed.** What you hear is what somebody did. Movement is loud on purpose:
+  sprinting and landing rattle your kit, and the strafing dummies have footsteps you can
+  track through walls.
+
+With the help panel showing (Tab), the top right of the screen says how the last world sound
+reached you, for example `round 2 openings, 21 m -6 dB 9.8 kHz + leak through wall -30 dB`.
+
+### What the sounds are
+
+Out of the box every sound is a **synthesized stand-in** (`Synth`: layered noise bursts and
+sine sweeps). They are placeholders, and they sound like it. To use real recordings, put
+audio files in `Assets/SiegeSandbox/Resources/Sfx/<SoundName>/` (see the README in that
+folder for the names). Each file is used as a variation, and all of the routing, muffling
+and reverb above is applied to it unchanged.
 
 ## Layout
 
@@ -120,6 +142,8 @@ no route at all you get a faint low thud through the wall.
 - `Assets/SiegeSandbox/Editor` - `SandboxBuilder` generates the scene, materials and meshes
   from code (**Siege Sandbox > Build Sandbox Scene**). Edit the builder rather than the
   scene if you want changes to survive a rebuild.
+  `PlayModeReloadGuard` holds script reloads until you stop playing: a reload in the middle
+  of a session wipes the running game's state (barricades stop appearing, for one).
 - `Assets/SiegeSandbox/Tests` - play mode tests for the mechanics
   (**Siege Sandbox > Run Mechanics Tests**, results in `Logs/mechanics-tests.txt`).
 

@@ -38,6 +38,7 @@ namespace SiegeSandbox
         HolePanel panel;
         Collider panelCollider;
         readonly List<Vector2> looseHoles = new List<Vector2>(); // bullet holes not yet part of a chunk, in wall space
+        readonly List<Vector2> holeNodes = new List<Vector2>();  // where sound already has a way through
 
         void Awake()
         {
@@ -137,7 +138,13 @@ namespace SiegeSandbox
             Prims.Debris(point, Vector3.one * radius * 0.6f, direction, debris, debrisMaterial);
 
             // A hole you could put your head through also lets sound through: give it a propagation node.
+            // Holes that overlap share one; routes are worked out again either way.
             Vector3 local = transform.InverseTransformPoint(point);
+            Vector2 at = new Vector2(local.x, local.y);
+            SoundPortal.MarkDirty();
+            for (int i = 0; i < holeNodes.Count; i++)
+                if ((holeNodes[i] - at).sqrMagnitude < 0.3f * 0.3f) return;
+            holeNodes.Add(at);
             GameObject node = new GameObject("HolePortal");
             node.transform.SetParent(transform, false);
             node.transform.localPosition = new Vector3(local.x, local.y, 0f);

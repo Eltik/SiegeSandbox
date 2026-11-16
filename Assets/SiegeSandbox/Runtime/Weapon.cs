@@ -35,8 +35,8 @@ namespace SiegeSandbox
         public float falloffMinScale = 0.55f;  // fraction of damage left at long range
 
         [Header("Reload (seconds)")]
-        public float reloadTime = 1.8f;        // magazine swap with a round still chambered
-        public float emptyReloadTime = 2.4f;   // magazine swap plus charging the bolt
+        public float reloadTime = 1.9f;        // magazine swap with a round still chambered
+        public float emptyReloadTime = 2.6f;   // magazine swap plus charging the bolt
 
         [Header("Melee")]
         public float meleeDamage = 100f;
@@ -85,16 +85,28 @@ namespace SiegeSandbox
 
         public event System.Action Fired;
 
-        // The reload animation is authored on this timeline (seconds) and stretched to the reload time.
-        const float TiltEnd = 0.25f, MagOutEnd = 0.60f, MagInStart = 0.85f, MagSeat = 1.25f;
-        const float BoltStart = 1.40f, BoltEnd = 1.85f, ReturnTime = 0.30f;
-        const float TacticalLength = 1.70f, EmptyLength = 2.30f;
+        // The reload is authored on this timeline (seconds) and stretched to the reload time.
+        // The support hand drives it: reach, release, pull, stow, fetch, align, seat, slap, (rack), return.
+        const float ReachEnd = 0.22f, Release = 0.30f, MagClear = 0.52f, Stowed = 0.72f, Fresh = 0.92f;
+        const float Aligned = 1.20f, MagSeat = 1.32f, Slap = 1.42f;
+        const float BoltReach = 1.62f, BoltBack = 1.82f, BoltLetGo = 1.90f;
+        const float TacticalLength = 1.90f, EmptyLength = 2.60f, ReturnTime = 0.42f;
+
+        // Hand positions in the gun's own space.
+        static readonly Vector3 Shoulder = new Vector3(-0.20f, -0.25f, -0.16f);
+        static readonly Vector3 ForeGrip = new Vector3(0f, -0.045f, 0.16f);
+        static readonly Vector3 MagGrip = new Vector3(0f, -0.155f, 0.07f);
+        static readonly Vector3 Belt = new Vector3(-0.17f, -0.44f, -0.10f);
+        static readonly Vector3 BoltGrip = new Vector3(-0.05f, 0.025f, -0.02f);
 
         float bloom, nextFireTime, lastShotTime = -10f, flashTimer;
         float kick, sprintBlend, reloadPose, busyBlend;
         float reloadElapsed, meleeElapsed;
         bool reloadFromEmpty, magSeated, meleeHitDone;
         bool heardMagOut, heardBoltBack, heardBoltForward, firedLastFrame, aimedLastFrame;
+        float springPos, springVel;   // a damped bounce for seating the magazine and letting the bolt go
+        Quaternion magRestRotation = Quaternion.identity;
+        Vector3 armThickness = new Vector3(0.055f, 0.055f, 0.34f);
         Vector3 magRest, boltRest, armRest;
 
         /// <summary>Climbs hard for the first shots, then drifts right, left, and right again.</summary>
@@ -118,7 +130,12 @@ namespace SiegeSandbox
             Instance = this;
             Ammo = magazineSize;
             if (muzzleFlash != null) muzzleFlash.SetActive(false);
-            if (magazine != null) magRest = magazine.localPosition;
+            if (magazine != null)
+            {
+                magRest = magazine.localPosition;
+                magRestRotation = magazine.localRotation;
+            }
+            if (leftArm != null) armThickness = leftArm.localScale;
             if (bolt != null) boltRest = bolt.localPosition;
             if (leftArm != null) armRest = leftArm.localPosition;
         }
@@ -228,6 +245,7 @@ namespace SiegeSandbox
             Quaternion rot = cam.transform.rotation * Quaternion.Euler(-offset.y, offset.x, 0f);
             Vector3 dir = rot * Vector3.forward;
             Sfx.PlayLocal(SoundId.GunShot, 1f);
+            Sfx.PlayReflections(cam.transform.position, 1f, true);
             Sfx.PlayLocal(SoundId.ShellCasing, 0.28f, 1f, Random.Range(0.35f, 0.5f)); // brass reaching the floor
             Projectile shot = Projectile.Spawn(cam.transform.position, dir * muzzleVelocity, damage, gravityScale, tracerMaterial, impactMaterial);
             shot.SetFalloff(falloffStart, falloffEnd, falloffMinScale);
@@ -273,10 +291,11 @@ namespace SiegeSandbox
 
             reloadElapsed += dt;
             float u = ReloadTimelinePosition();
-            if (!heardMagOut && u >= TiltEnd)
+            if (!heardMagOut && u >= Release)
             {
                 heardMagOut = true;
                 Sfx.PlayLocal(SoundId.MagOut, 0.8f);
+                if (reloadFromEmpty) DropSpentMagazine(); // an empty magazine is just let go
             }
             if (!magSeated && u >= MagSeat)
             {
@@ -284,18 +303,37 @@ namespace SiegeSandbox
                 magSeated = true;
                 Ammo = magazineSize;
                 Sfx.PlayLocal(SoundId.MagIn, 0.9f);
+                springVel += 5.5f; // the gun jumps as it seats
             }
-            if (reloadFromEmpty && !heardBoltBack && u >= BoltStart + 0.05f)
+            if (reloadFromEmpty && !heardBoltBack && u >= BoltReach + 0.04f)
             {
                 heardBoltBack = true;
                 Sfx.PlayLocal(SoundId.BoltBack, 0.8f);
             }
-            if (reloadFromEmpty && !heardBoltForward && u >= BoltStart + (BoltEnd - BoltStart) * 0.62f)
+            if (reloadFromEmpty && !heardBoltForward && u >= BoltLetGo)
             {
                 heardBoltForward = true;
                 Sfx.PlayLocal(SoundId.BoltForward, 0.9f);
+                springVel -= 4.5f; // and jolts forward as the bolt slams home
             }
             if (u >= (reloadFromEmpty ? EmptyLength : TacticalLength)) IsReloading = false;
+        }
+
+        /// <summary>Leave a physics copy of the empty magazine to fall to the floor.</summary>
+        void DropSpentMagazine()
+        {
+            if (magazine == null) return;
+            GameObject spent = Prims.Cube("SpentMagazine", null, magazine.position, magazine.lossyScale, null, true);
+            spent.transform.rotation = magazine.rotation;
+            spent.layer = Prims.IgnoreRaycastLayer;
+            Renderer source = magazine.GetComponent<Renderer>();
+            if (source != null) spent.GetComponent<Renderer>().sharedMaterial = source.sharedMaterial;
+            Rigidbody rb = spent.AddComponent<Rigidbody>();
+            rb.mass = 0.3f;
+            rb.AddForce(-cam.transform.up * 1.2f + player.transform.forward * 0.4f, ForceMode.VelocityChange);
+            rb.AddTorque(Random.insideUnitSphere * 3f, ForceMode.VelocityChange);
+            Destroy(spent, 6f);
+            Sfx.PlayLocal(SoundId.MagDrop, 0.6f, 1f, 0.5f); // it reaches the floor half a second later
         }
 
         // ------------------------------------------------------------------ melee
@@ -438,35 +476,83 @@ namespace SiegeSandbox
             return Mathf.Clamp01((t - start) / Mathf.Max(0.0001f, end - start));
         }
 
+        static float Ease(float t, float start, float end)
+        {
+            return Mathf.SmoothStep(0f, 1f, Ramp(t, start, end));
+        }
+
         void UpdatePose(float dt, float aim)
         {
             kick = Mathf.MoveTowards(kick, 0f, dt * 9f);
 
-            // Reload: cant the gun, drop the magazine, bring a new one up, seat it, charge the bolt if it ran dry.
-            float poseTarget = 0f, magOut = 0f, seatBump = 0f, boltPull = 0f;
+            // Damped spring: gives the gun a bounce on the events that should have weight.
+            springVel += (-240f * springPos - 17f * springVel) * dt;
+            springPos += springVel * dt;
+
+            // ---- Reload: follow the support hand through the motions.
+            float poseTarget = 0f, boltPull = 0f, rackTilt = 0f, pullTwist = 0f;
+            Vector3 hand = ForeGrip;
+            Vector3 magOffset = Vector3.zero;
+            float magTilt = 0f;
             bool magVisible = true;
+
             if (IsReloading)
             {
                 float u = ReloadTimelinePosition();
                 float length = reloadFromEmpty ? EmptyLength : TacticalLength;
-                poseTarget = Mathf.SmoothStep(0f, 1f, Ramp(u, 0f, TiltEnd)) * (1f - Mathf.SmoothStep(0f, 1f, Ramp(u, length - ReturnTime, length)));
+                poseTarget = Ease(u, 0f, ReachEnd) * (1f - Ease(u, length - ReturnTime, length));
 
-                if (u < TiltEnd) magOut = 0f;
-                else if (u < MagOutEnd) { float k = Ramp(u, TiltEnd, MagOutEnd); magOut = k * k; }            // falls away, accelerating
-                else if (u < MagInStart) { magOut = 1f; magVisible = false; }                                // fresh magazine is off screen
-                else if (u < MagSeat) { float k = 1f - Ramp(u, MagInStart, MagSeat); magOut = k * k; }       // pushed up, slowing into the well
-                seatBump = u >= MagSeat ? 1f - Ramp(u, MagSeat, MagSeat + 0.12f) : 0f;
+                Vector3 pulled = MagGrip + new Vector3(0f, -0.20f, -0.015f);   // magazine clear of the well
+                Vector3 below = MagGrip + new Vector3(0f, -0.115f, 0.01f);     // fresh one lined up under it
 
-                if (reloadFromEmpty && u > BoltStart && u < BoltEnd)
+                if (u < Release)
                 {
-                    float k = Ramp(u, BoltStart, BoltEnd);
-                    boltPull = k < 0.6f ? Mathf.SmoothStep(0f, 1f, k / 0.6f) : 1f - Ramp(k, 0.6f, 0.75f);   // pull back, then let it snap home
+                    hand = Vector3.Lerp(ForeGrip, MagGrip, Ease(u, 0.04f, ReachEnd));
+                }
+                else if (u < Stowed)
+                {
+                    float down = Ramp(u, Release, MagClear);
+                    hand = Vector3.Lerp(MagGrip, pulled, down * down);                  // tugged out, speeding up
+                    hand = Vector3.Lerp(hand, Belt, Ease(u, MagClear, Stowed));          // and away to the belt
+                    magOffset = hand - MagGrip;
+                    magTilt = 25f * Ease(u, MagClear, Stowed);
+                    magVisible = !reloadFromEmpty;                                       // an empty one was dropped
+                    pullTwist = Mathf.Sin(Ramp(u, Release, MagClear) * Mathf.PI);
+                }
+                else if (u < Fresh)
+                {
+                    hand = Belt;
+                    magVisible = false;
+                }
+                else if (u < MagSeat)
+                {
+                    float up = Ramp(u, Fresh, Aligned);
+                    hand = Vector3.Lerp(Belt, below, 1f - (1f - up) * (1f - up));        // swung up, slowing under the well
+                    float push = Ramp(u, Aligned, MagSeat);
+                    hand = Vector3.Lerp(hand, MagGrip, push * push * push);              // then driven home
+                    magOffset = hand - MagGrip;
+                    magTilt = 25f * (1f - Ease(u, Fresh, Aligned));
+                }
+                else if (!reloadFromEmpty || u < Slap)
+                {
+                    hand = Vector3.Lerp(MagGrip, ForeGrip, Ease(u, Slap, Slap + 0.26f)); // a slap, then back to the fore-grip
+                }
+                else
+                {
+                    // Ran dry: over to the charging handle, haul it back, let it fly, return.
+                    Vector3 hauled = BoltGrip + new Vector3(0f, 0f, -0.05f);
+                    hand = Vector3.Lerp(MagGrip, BoltGrip, Ease(u, Slap, BoltReach));
+                    float haul = Ease(u, BoltReach, BoltBack);
+                    hand = Vector3.Lerp(hand, hauled, haul);
+                    boltPull = u < BoltLetGo ? haul : 1f - Ramp(u, BoltLetGo, BoltLetGo + 0.03f);
+                    hand = Vector3.Lerp(hand, ForeGrip, Ease(u, BoltLetGo + 0.08f, BoltLetGo + 0.36f));
+                    rackTilt = Ease(u, Slap, BoltReach) * (1f - Ease(u, BoltLetGo + 0.05f, BoltLetGo + 0.3f));
                 }
             }
             reloadPose = Mathf.MoveTowards(reloadPose, poseTarget, dt * 7f);
             busyBlend = Mathf.MoveTowards(busyBlend, player.HandsBusy ? 1f : 0f, dt * 6f);
 
-            // Melee: a short wind-up, a fast thrust, a slower recovery.
+            // ---- Melee: a short wind-up, a fast thrust, a slower recovery.
             float strike = 0f;
             if (IsMeleeing)
             {
@@ -485,27 +571,27 @@ namespace SiegeSandbox
                 pos += new Vector3(0f, 0f, -0.035f * kick);
                 pos += new Vector3(bob.x * 0.6f, -bob.y * 0.5f, 0f);
                 pos += new Vector3(0.05f, -0.06f, -0.05f) * sprintPose;
-                pos += new Vector3(-0.045f, -0.035f, -0.03f) * reloadPose;
-                pos += new Vector3(0f, 0.012f, 0f) * seatBump;
+                pos += new Vector3(-0.055f, -0.02f, -0.035f) * reloadPose;       // brought in toward the chest
+                pos += new Vector3(0f, 0.014f * springPos, -0.012f * boltPull);  // bounce, and tugged back by the rack
                 pos += new Vector3(-0.10f, 0.03f, 0.20f) * strike;
-                pos += new Vector3(0.04f, -0.34f, -0.05f) * busyBlend; // hands are busy: gun drops out of view
+                pos += new Vector3(0.04f, -0.34f, -0.05f) * busyBlend;           // hands are busy: gun drops out of view
                 model.localPosition = pos;
 
+                // Canted so the magazine well faces the support hand; rolled back upright to work the bolt.
                 model.localRotation = Quaternion.Euler(
-                    -1.5f * kick * (1f - 0.6f * aim) + 12f * sprintPose - 16f * reloadPose - 10f * strike + 30f * busyBlend,
-                    -35f * sprintPose - 8f * reloadPose - 60f * strike,
-                    -32f * reloadPose + 35f * strike);
+                    -1.5f * kick * (1f - 0.6f * aim) + 12f * sprintPose - 15f * reloadPose + 5f * rackTilt - 2.6f * springPos - 10f * strike + 30f * busyBlend,
+                    -35f * sprintPose - 9f * reloadPose - 60f * strike,
+                    (-30f + 17f * rackTilt + 4f * pullTwist) * reloadPose + 35f * strike);
             }
 
-            Vector3 magOffset = new Vector3(0f, -0.26f, -0.02f) * magOut;
             if (magazine != null)
             {
                 magazine.localPosition = magRest + magOffset;
+                magazine.localRotation = magRestRotation * Quaternion.Euler(magTilt, 0f, -magTilt * 0.4f);
                 if (magazine.gameObject.activeSelf != magVisible) magazine.gameObject.SetActive(magVisible);
             }
             if (bolt != null) bolt.localPosition = boltRest + new Vector3(0f, 0f, -0.045f) * boltPull;
-            // The support hand follows the magazine down and back up, then reaches for the bolt.
-            if (leftArm != null) leftArm.localPosition = armRest + magOffset * 0.9f + new Vector3(0.03f, 0.07f, -0.10f) * boltPull;
+            PoseArm(leftArm, Shoulder, hand);
 
             if (muzzleFlash != null)
             {
@@ -513,6 +599,18 @@ namespace SiegeSandbox
                 bool on = flashTimer > 0f;
                 if (muzzleFlash.activeSelf != on) muzzleFlash.SetActive(on);
             }
+        }
+
+        /// <summary>Stretch a forearm block from the shoulder to wherever the hand needs to be.</summary>
+        void PoseArm(Transform arm, Vector3 shoulder, Vector3 hand)
+        {
+            if (arm == null) return;
+            Vector3 along = hand - shoulder;
+            float length = along.magnitude;
+            if (length < 0.001f) return;
+            arm.localPosition = shoulder + along * 0.5f;
+            arm.localRotation = Quaternion.LookRotation(along / length, Vector3.up);
+            arm.localScale = new Vector3(armThickness.x, armThickness.y, length);
         }
     }
 }

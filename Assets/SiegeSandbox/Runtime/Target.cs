@@ -23,7 +23,10 @@ namespace SiegeSandbox
         Vector3 home;
         Renderer[] renderers;
         Color[] baseColors;
-        float flash, respawnTimer, patrolPhase;
+        float flash, respawnTimer, patrolPhase, stepDistance;
+
+        /// <summary>How far a moving dummy travels between footfalls.</summary>
+        public float stride = 0.8f;
 
         void Awake()
         {
@@ -95,7 +98,16 @@ namespace SiegeSandbox
             if (patrolSpeed > 0f && patrolOffset.sqrMagnitude > 0f)
             {
                 patrolPhase += dt * patrolSpeed / patrolOffset.magnitude;
+                Vector3 before = transform.position;
                 transform.position = home + patrolOffset * Mathf.Sin(patrolPhase);
+
+                // Something moving about is something you can hear and place, through walls and round corners.
+                stepDistance += Vector3.Distance(before, transform.position);
+                if (stepDistance >= stride)
+                {
+                    stepDistance = 0f;
+                    Sfx.Play(SoundId.NpcFootstep, transform.position + Vector3.up * 0.1f, 1f, 1f, 2.5f);
+                }
             }
 
             if (flash > 0f)

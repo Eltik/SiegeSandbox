@@ -88,6 +88,7 @@ namespace SiegeSandbox
 
             // It unrolls down the frame through the middle of the action...
             float unrolled = Mathf.InverseLerp(0.22f, 0.78f, Progress);
+            active.ShowRoll(unrolled);
             int boards = Mathf.CeilToInt(unrolled * active.PlankCount);
             if (boards > lastBoards)
             {

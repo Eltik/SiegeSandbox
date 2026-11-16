@@ -350,11 +350,18 @@ namespace SiegeSandbox.EditorTools
             // Places sound can bend round or over. (Doorways, windows and holes add their own.)
             Transform portals = new GameObject("SoundPortals").transform;
             portals.SetParent(level, false);
-            for (int i = -2; i <= 2; i++) MakePortal(portals, "OverDivider", new Vector3(i * 6f, 3.9f, DividerZ), 2f);
+            // Ends and tops of walls are given some width: sound spills round the whole edge.
+            for (int i = -2; i <= 2; i++) MakePortal(portals, "OverDivider", new Vector3(i * 6f, 3.9f, DividerZ), 2f, 0.5f);
             MakePortal(portals, "CrawlTunnel", new Vector3(8f, 0.4f, -7f), 2f);
-            MakePortal(portals, "LeanWall_Right", new Vector3(-5.2f, 1.5f, -18f), 0f);
-            MakePortal(portals, "LeanWall_Left", new Vector3(-10.8f, 1.5f, -18f), 0f);
-            MakePortal(portals, "LeanWall_Over", new Vector3(-8f, 3.4f, -18f), 1f);
+            MakePortal(portals, "LeanWall_Right", new Vector3(-4.95f, 1.5f, -18f), 0f, 0.45f);
+            MakePortal(portals, "LeanWall_Left", new Vector3(-11.05f, 1.5f, -18f), 0f, 0.45f);
+            MakePortal(portals, "LeanWall_Over", new Vector3(-8f, 3.4f, -18f), 1f, 0.5f);
+            MakePortal(portals, "CrouchWall_Over", new Vector3(8f, 1.5f, -18f), 0f, 0.5f);
+            foreach (float px in new[] { -4f, 4f })
+            {
+                MakePortal(portals, "Pillar_Side", new Vector3(px - 1f, 1.5f, 6f), 0f, 0.45f);
+                MakePortal(portals, "Pillar_Side", new Vector3(px + 1f, 1.5f, 6f), 0f, 0.45f);
+            }
             DividerSegment(divider, "Solid_D", 10f, 15f, 0f, 3.5f);
 
             // The range beyond the divider.
@@ -393,12 +400,14 @@ namespace SiegeSandbox.EditorTools
             MakePreview(go.transform, size, wall.thickness, matSoftWall);
         }
 
-        static void MakePortal(Transform parent, string name, Vector3 position, float extraLossDb)
+        static void MakePortal(Transform parent, string name, Vector3 position, float extraLossDb, float radius = 0f)
         {
             GameObject go = new GameObject(name);
             go.transform.SetParent(parent, false);
             go.transform.position = position;
-            go.AddComponent<SoundPortal>().extraLossDb = extraLossDb;
+            SoundPortal portal = go.AddComponent<SoundPortal>();
+            portal.extraLossDb = extraLossDb;
+            portal.radius = radius;
         }
 
         static void MakeBarricade(Transform parent, string name, Vector3 bottomCenter, Vector2 size, float bottomGap, bool built)

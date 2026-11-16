@@ -19,7 +19,8 @@ namespace SiegeSandbox
             switch (id)
             {
                 case SoundId.GunShot: return 3;
-                case SoundId.Footstep: return 4;
+                case SoundId.Footstep:
+                case SoundId.NpcFootstep: return 4;
                 case SoundId.ImpactHard:
                 case SoundId.ImpactWood:
                 case SoundId.ImpactSoftWall:
@@ -29,6 +30,10 @@ namespace SiegeSandbox
                 case SoundId.Cloth:
                 case SoundId.ShellCasing:
                 case SoundId.Hammer:
+                case SoundId.GearRattle:
+                case SoundId.TailSmall:
+                case SoundId.TailRoom:
+                case SoundId.TailOutdoor:
                 case SoundId.WallPunch: return 2;
                 default: return 1;
             }
@@ -50,13 +55,12 @@ namespace SiegeSandbox
             switch (id)
             {
                 case SoundId.GunShot:
-                    b = Buf(0.55f);
+                    b = Buf(0.3f);
                     Noise(b, 0f, 0.03f, 1.0f, 0f, 0.006f, 0f, 2500f);                 // supersonic crack
                     Noise(b, 0f, 0.14f, 0.9f, 0.0005f, 0.030f, 2200f + 150f * v, 200f); // body of the blast
                     Tone(b, 0f, 0.14f, 0.9f, 190f, 60f, 0.02f, 0.045f);              // chest thump
                     Tone(b, 0.012f, 0.03f, 0.15f, 3200f, 3200f, 1f, 0.006f);         // bolt clatter
-                    Noise(b, 0.01f, 0.5f, 0.25f, 0.005f, 0.14f, 1200f, 150f);         // room tail
-                    return Finish(b, 0.95f, 1.6f);
+                    return Finish(b, 0.95f, 1.6f); // dry: the room is added as a separate, positioned tail
 
                 case SoundId.ShellCasing:
                     b = Buf(0.5f);
@@ -105,7 +109,50 @@ namespace SiegeSandbox
                     Tone(b, 0f, 0.04f, 0.3f, 2600f, 2600f, 1f, 0.008f);
                     return Finish(b, 0.8f, 0f);
 
+                case SoundId.MagDrop:
+                    b = Buf(0.4f);
+                    for (int i = 0; i < 3; i++)                                       // hits the floor and skips twice
+                    {
+                        float at = i == 0 ? 0f : 0.11f * i + 0.03f * Unit();
+                        float g = 1f / (1f + i * 1.5f);
+                        Tone(b, at, 0.08f, g, 820f + 120f * i, 640f, 0.02f, 0.018f);
+                        Tone(b, at, 0.05f, g * 0.5f, 2100f, 2100f, 1f, 0.01f);
+                        Noise(b, at, 0.015f, g, 0f, 0.004f, 5000f, 600f);
+                    }
+                    return Finish(b, 0.6f, 0f);
+
+                case SoundId.GearRattle:
+                    b = Buf(0.2f);
+                    Noise(b, 0f, 0.18f, 0.5f, 0.02f, 0.05f, 3200f, 900f);             // webbing and pouches
+                    Grains(b, 5 + v, 0f, 0.14f, 0.5f, 8000f, 3000f);                  // buckles
+                    return Finish(b, 0.35f, 0f);
+
+                case SoundId.TailSmall:                                               // a tight, bright box of a room
+                    b = Buf(0.4f);
+                    for (int i = 0; i < 4; i++) Noise(b, 0.007f + 0.008f * i * (1f + 0.2f * v), 0.01f, 0.7f / (1 + i), 0f, 0.004f, 4000f, 400f);
+                    Noise(b, 0.005f, 0.4f, 1f, 0.004f, 0.07f, 3500f, 300f);
+                    return Finish(b, 0.7f, 0f);
+
+                case SoundId.TailRoom:                                                // a hall: later reflections, longer ring
+                    b = Buf(0.95f);
+                    for (int i = 0; i < 3; i++) Noise(b, 0.02f + 0.018f * i * (1f + 0.15f * v), 0.015f, 0.6f / (1 + i), 0f, 0.006f, 3000f, 300f);
+                    Noise(b, 0.01f, 0.9f, 1f, 0.01f, 0.20f, 2200f, 200f);
+                    return Finish(b, 0.7f, 0f);
+
+                case SoundId.TailOutdoor:                                             // open air: a long, low roll
+                    b = Buf(1.6f);
+                    Noise(b, 0.02f, 1.6f, 1f, 0.03f, 0.45f, 1100f - 150f * v, 90f);
+                    Noise(b, 0.05f, 1.2f, 0.6f, 0.08f, 0.6f, 320f, 40f);
+                    return Finish(b, 0.6f, 0f);
+
+                case SoundId.Echo:                                                    // the shot coming back off a far wall
+                    b = Buf(0.45f);
+                    Noise(b, 0f, 0.25f, 1f, 0.003f, 0.06f, 1400f, 150f);
+                    Tone(b, 0f, 0.18f, 0.6f, 150f, 70f, 0.03f, 0.05f);
+                    return Finish(b, 0.6f, 0f);
+
                 case SoundId.Footstep:
+                case SoundId.NpcFootstep:
                     b = Buf(0.18f);
                     Noise(b, 0f, 0.12f, 1f, 0.002f, 0.03f, 420f + 40f * v, 0f);       // heel
                     Tone(b, 0f, 0.10f, 0.5f, 110f, 70f, 0.02f, 0.03f);
@@ -243,13 +290,6 @@ namespace SiegeSandbox
                     Tone(b, 0f, 0.2f, 0.9f, 80f, 45f, 0.04f, 0.06f);
                     Noise(b, 0.03f, 0.3f, 0.3f, 0.03f, 0.09f, 2200f, 600f);
                     return Finish(b, 0.85f, 0f);
-
-                case SoundId.RoomTone:
-                    b = Buf(4f);
-                    Noise(b, 0f, 4f, 1f, 0f, 1e9f, 220f, 30f);                         // air and distant hum
-                    Noise(b, 0f, 4f, 0.15f, 0f, 1e9f, 1800f, 600f);
-                    Loop(b, 0.4f);
-                    return Finish(b, 0.25f, 0f);
             }
             return Buf(0.05f);
         }

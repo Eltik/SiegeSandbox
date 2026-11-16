@@ -485,6 +485,9 @@ namespace SiegeSandbox.Tests
             Assert.IsTrue(interactor.IsBusy);
             Assert.IsTrue(door.IsPlankPresent(top), "it should unroll from the top");
             Assert.IsFalse(door.IsPlankPresent(0), "and not have reached the bottom yet");
+            Transform roll = door.transform.Find("Roll");
+            Assert.IsTrue(roll.gameObject.activeSelf, "the roll should be visible at the leading edge");
+            Assert.Less(roll.localPosition.y, door.size.y - 0.3f, "and be on its way down");
 
             // Let go: it comes away again.
             s.interactHeld = false;
@@ -506,6 +509,9 @@ namespace SiegeSandbox.Tests
             yield return new WaitForSeconds(1.4f);
             Assert.IsTrue(door.IsComplete, "the doorway should now be boarded up");
             Assert.IsFalse(interactor.IsBusy);
+            Assert.IsFalse(roll.gameObject.activeSelf, "nothing is left on the roll once it is up");
+            Renderer sheet = door.GetComponentInChildren<HolePanel>().GetComponentInChildren<Renderer>();
+            Assert.IsTrue(sheet.enabled && sheet.gameObject.activeInHierarchy, "and the boards are there to be seen");
 
             // Still holding the key must not start tearing it down again.
             yield return new WaitForSeconds(0.4f);
@@ -730,6 +736,8 @@ namespace SiegeSandbox.Tests
             Assert.Greater(shots, 2);
             Assert.AreEqual(shots, Sfx.PlayCount(SoundId.GunShot));
             Assert.AreEqual(shots, Sfx.PlayCount(SoundId.ShellCasing));
+            Assert.AreEqual(shots, Sfx.PlayCount(SoundId.TailOutdoor), "every shot should ring out in the space it was fired in");
+            Assert.AreEqual(shots, Sfx.PlayCount(SoundId.Echo), "and come back off the far wall");
 
             // Sprinting puts feet down more often than walking.
             Sfx.ResetCounts();
@@ -775,6 +783,12 @@ namespace SiegeSandbox.Tests
             Assert.Less(viaDoor.apparentPosition.x, ear.x - 0.5f, "and be heard from the doorway's side, not through the wall");
             Assert.Greater(viaDoor.lossDb, 3f);
             Assert.Less(viaDoor.cutoffHz, 12000f, "a sound that has bent round a corner loses its top end");
+            Assert.AreEqual(1, viaDoor.hops);
+            Assert.Greater(viaDoor.pathLength, Vector3.Distance(source, ear) + 1f, "the route round is longer than the straight line");
+            Assert.IsTrue(viaDoor.hasSecond, "what leaks through the wall should be heard as well");
+            Assert.Less(Vector3.Distance(viaDoor.secondPosition, source), 0.01f, "from where the sound really is");
+            Assert.LessOrEqual(viaDoor.secondCutoffHz, 500f, "as a dull thump");
+            Assert.Greater(viaDoor.secondLossDb, viaDoor.lossDb + 10f);
 
             // Board the door up: whichever way it now comes, it is quieter.
             Barricade door = GameObject.Find("Barricade_Door").GetComponent<Barricade>();
@@ -794,6 +808,68 @@ namespace SiegeSandbox.Tests
             wall.Punch(new Vector3(-3.3f, 1.5f, -8f), Vector3.forward);
             SoundPath throughHole = Sfx.Evaluate(softSource, softEar);
             Assert.AreEqual(SoundPathKind.Direct, throughHole.kind, "a hole in a soft wall should let sound straight through");
+        }
+
+        [UnityTest]
+        public IEnumerator Sound_RoutesThroughSeveralOpenings_AndDestructionChangesTheRoute()
+        {
+            yield return null;
+            Sfx.GraphSize(out int nodes, out int links);
+            Assert.Greater(nodes, 10, "the level should be covered in propagation nodes");
+            Assert.Greater(links, nodes, "and they should be joined up");
+
+            // Listener tucked in behind the lean wall, source the far side of the dividing wall:
+            // the sound has to come through the divider and then round the lean wall.
+            Vector3 ear = new Vector3(-8.5f, 1.5f, -19f), source = new Vector3(6f, 1.5f, -4f);
+            SoundPath open = Sfx.Evaluate(source, ear);
+            Assert.AreEqual(SoundPathKind.Portal, open.kind);
+            Assert.GreaterOrEqual(open.hops, 2, "one opening is not enough to get there");
+            Assert.Greater(open.pathLength, Vector3.Distance(source, ear) + 0.5f);
+            Assert.Less(Vector3.Distance(open.apparentPosition, ear), open.pathLength + 0.01f);
+            Assert.Greater(Vector3.Distance(open.apparentPosition, ear), open.pathLength - 0.01f, "it is heard as far away as the route is long");
+            Assert.IsFalse(open.hasSecond, "two solid walls leak nothing worth hearing");
+
+            // Board up the doorway and the route gets worse straight away (or moves somewhere else).
+            Barricade door = GameObject.Find("Barricade_Door").GetComponent<Barricade>();
+            door.BuildAll();
+            yield return null;
+            Physics.SyncTransforms();
+            SoundPath boarded = Sfx.Evaluate(source, ear);
+            Assert.Greater(boarded.lossDb, open.lossDb + 0.5f, "a barricade should change what you hear at once");
+
+            // Knock it out again and it is back to how it was.
+            door.Clear();
+            yield return null;
+            Physics.SyncTransforms();
+            SoundPath reopened = Sfx.Evaluate(source, ear);
+            Assert.AreEqual(open.lossDb, reopened.lossDb, 0.01f);
+            Assert.AreEqual(open.hops, reopened.hops);
+        }
+
+        [UnityTest]
+        public IEnumerator Sound_ReflectionsFitTheSpace_AndMovingDummiesCanBeHeard()
+        {
+            yield return null;
+
+            // The crawl tunnel is a tight box; the yard is open sky.
+            Assert.AreEqual(SoundSpace.Small, Sfx.Probe(new Vector3(8f, 0.4f, -6.8f)));
+            Assert.AreEqual(SoundSpace.Outdoor, Sfx.Probe(new Vector3(0f, 1.5f, -26f)));
+
+            // A loud sound somewhere else brings its own room with it.
+            Sfx.ResetCounts();
+            Sfx.PlayReflections(new Vector3(8f, 0.4f, -6.8f), 1f, false);
+            Assert.AreEqual(1, Sfx.PlayCount(SoundId.TailSmall));
+            Assert.AreEqual(0, Sfx.PlayCount(SoundId.Echo), "no echo indoors");
+            Sfx.PlayReflections(new Vector3(0f, 1.5f, 12f), 1f, false);
+            Assert.AreEqual(1, Sfx.PlayCount(SoundId.TailOutdoor));
+            Assert.AreEqual(1, Sfx.PlayCount(SoundId.Echo));
+
+            // The strafing dummies walk about, and every step is routed to the listener.
+            Sfx.ResetCounts();
+            yield return new WaitForSeconds(1.5f);
+            Assert.Greater(Sfx.PlayCount(SoundId.NpcFootstep), 2, "moving dummies should make footsteps");
+            Assert.AreEqual(SoundId.NpcFootstep, Sfx.LastWorldSound);
+            Assert.IsFalse(string.IsNullOrEmpty(Sfx.Describe(Sfx.LastPath)));
         }
 
         [UnityTest]

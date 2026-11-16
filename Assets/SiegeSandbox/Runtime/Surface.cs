@@ -2,11 +2,13 @@ using UnityEngine;
 
 namespace SiegeSandbox
 {
-    public enum SurfaceKind { Hard, Wood, SoftWall }
+    /// <summary>Hard is concrete or masonry, and is what anything without a Surface component counts as.</summary>
+    public enum SurfaceKind { Hard, Wood, SoftWall, Metal, Glass }
 
     /// <summary>
-    /// What a collider is made of. Anything without this component is treated as hard
-    /// (bullets stop). Wood and soft walls let bullets through at reduced damage.
+    /// What a collider is made of. Bullets pass through wood, soft walls and glass at reduced
+    /// damage and stop at everything else. Sound uses the same materials: each one takes its own
+    /// amount of level and treble out of anything heard through it (see Sfx).
     /// </summary>
     public class Surface : MonoBehaviour
     {

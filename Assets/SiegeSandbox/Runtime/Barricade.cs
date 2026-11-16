@@ -49,6 +49,8 @@ namespace SiegeSandbox
 
         Plank[] planks = new Plank[0];
         HolePanel panel;
+        Transform roll;
+        SoundPortal opening;
         int meleeHits;
         bool deploying;
 
@@ -82,7 +84,11 @@ namespace SiegeSandbox
             GameObject node = new GameObject("OpeningPortal");
             node.transform.SetParent(transform, false);
             node.transform.localPosition = new Vector3(0f, size.y * 0.5f, 0f);
-            node.AddComponent<SoundPortal>();
+            opening = node.AddComponent<SoundPortal>();
+
+            // The rolled-up bundle that is seen at the leading edge while the barricade is being unrolled.
+            roll = Prims.Cube("Roll", transform, new Vector3(0f, size.y, 0f), new Vector3(size.x, 0.16f, 0.16f), plankMaterial, false).transform;
+            roll.gameObject.SetActive(false);
 
             if (builtAtStart) BuildAll();
         }
@@ -141,6 +147,7 @@ namespace SiegeSandbox
             p.bulletHits = 0;
             p.collider.enabled = true;
             PlanksPresent++;
+            UpdateOpening();
         }
 
         /// <summary>The two straps, and the part of the sprayed cross that falls in these rows.</summary>
@@ -166,6 +173,7 @@ namespace SiegeSandbox
             p.present = false;
             p.collider.enabled = false;
             PlanksPresent--;
+            UpdateOpening();
 
             DropPlank(i, direction, Random.Range(0.35f, 0.6f));
             DropPlank(i, direction, Random.Range(0.25f, 0.4f));
@@ -202,6 +210,23 @@ namespace SiegeSandbox
             meleeHits = 0;
             BulletHoles = 0;
             deploying = false;
+            ShowRoll(-1f);
+            UpdateOpening();
+        }
+
+        /// <summary>
+        /// Tell the sound system how much of the opening is boarded over: the more boards, the more
+        /// level and treble sound loses coming through it. Routes are worked out again at once.
+        /// </summary>
+        void UpdateOpening()
+        {
+            if (opening != null && planks.Length > 0)
+            {
+                float covered = PlanksPresent / (float)planks.Length;
+                opening.extraLossDb = 7f * covered;
+                opening.cutoffHz = Mathf.Lerp(22000f, 3200f, covered);
+            }
+            SoundPortal.MarkDirty();
         }
 
         // ------------------------------------------------------------------ putting up and taking down
@@ -210,6 +235,23 @@ namespace SiegeSandbox
         {
             for (int i = 0; i < planks.Length; i++) AddPlank(i);
             deploying = false;
+            ShowRoll(-1f);
+        }
+
+        /// <summary>
+        /// Show the rolled-up bundle part-way down the opening: 0 is at the top, about to be let go,
+        /// 1 is at the bottom with nothing left on it. A negative value hides it.
+        /// </summary>
+        public void ShowRoll(float unrolled)
+        {
+            if (roll == null) return;
+            bool show = unrolled >= 0f && unrolled < 1f;
+            if (roll.gameObject.activeSelf != show) roll.gameObject.SetActive(show);
+            if (!show) return;
+            float thick = Mathf.Lerp(0.17f, 0.07f, unrolled); // it gets thinner as it pays out
+            roll.localScale = new Vector3(size.x, thick, thick);
+            roll.localPosition = new Vector3(0f, Mathf.Lerp(size.y, bottomGap, unrolled) - thick * 0.5f, 0f);
+            roll.localRotation = Quaternion.Euler(unrolled * 1400f, 0f, 0f);
         }
 
         /// <summary>Unroll from the top: show this many boards, counting down from the top one.</summary>
@@ -303,6 +345,7 @@ namespace SiegeSandbox
                 if (planks[i].present) DropPlank(i, direction, Random.Range(0.4f, 0.9f));
             Prims.Debris(centre, new Vector3(size.x * 0.45f, size.y * 0.4f, 0.02f), direction, 10, plankMaterial);
             Sfx.Play(SoundId.BarricadeCollapse, centre, 1f);
+            Sfx.PlayReflections(centre, 0.45f, false);
             ClearEverything();
         }
 

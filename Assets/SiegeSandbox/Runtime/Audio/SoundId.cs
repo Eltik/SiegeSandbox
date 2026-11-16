@@ -2,11 +2,11 @@ namespace SiegeSandbox
 {
     public enum SoundId
     {
-        GunShot, ShellCasing, DryFire, MagOut, MagIn, BoltBack, BoltForward,
-        Footstep, Crawl, Land, Jump, Cloth, MeleeSwing,
+        GunShot, ShellCasing, DryFire, MagOut, MagIn, MagDrop, BoltBack, BoltForward,
+        Footstep, NpcFootstep, Crawl, Land, Jump, Cloth, GearRattle, MeleeSwing,
         ImpactHard, ImpactWood, ImpactSoftWall, ImpactFlesh, Headshot, HitTick,
         WallPunch, PlankBreak, BarricadeCollapse, Hammer, BarricadeUnroll, Pry, BodyFall,
-        RoomTone,
+        TailSmall, TailRoom, TailOutdoor, Echo,
         Count
     }
 }
