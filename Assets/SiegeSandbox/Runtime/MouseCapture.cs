@@ -31,6 +31,12 @@ namespace SiegeSandbox
         /// <summary>How far the pointer has been seen to move lately while it was meant to be held still.</summary>
         public static float Drift { get; private set; }
         public static int Warps { get; private set; }
+        /// <summary>This frame's turn came from the mouse's own counts, not the accelerated pointer.</summary>
+        public static bool UsingRaw { get; private set; }
+
+        /// <summary>One raw mouse count turns this much of what one pointer unit used to.</summary>
+        const float RawScale = 0.4f;
+        static int systemFrames;
 
         static Vector2 lastPosition;
         static int skipFrames;
@@ -81,6 +87,7 @@ namespace SiegeSandbox
             Cursor.lockState = CursorLockMode.Locked;
             Cursor.visible = false;
             Current = Pin(true) ? Mode.Pinned : Mode.Locked;
+            if (GameSettings.rawMouse) RawMouseInput.Start();
             lastPosition = mouse != null ? mouse.position.ReadValue() : Centre();
             skipFrames = 3;
             Drift = 0f;
@@ -100,7 +107,8 @@ namespace SiegeSandbox
         public static Vector2 Read(Mouse mouse)
         {
             RawDelta = mouse != null ? mouse.delta.ReadValue() : Vector2.zero;
-            if (!Active || mouse == null) return Vector2.zero;
+            Vector2 counts = RawMouseInput.Consume(); // every frame, so nothing piles up while the mouse is not ours
+            if (!Active || mouse == null) { systemFrames = 0; UsingRaw = false; return Vector2.zero; }
 
             if (Cursor.lockState != CursorLockMode.Locked) Cursor.lockState = CursorLockMode.Locked;
             if (Cursor.visible) Cursor.visible = false;
@@ -123,6 +131,31 @@ namespace SiegeSandbox
             }
 
             Vector2 look = RawDelta;
+
+            // With acceleration off, turn by what the mouse itself reported. The system pointer is
+            // only a fallback: for a trackpad, or if raw movement never arrives.
+            UsingRaw = false;
+            if (GameSettings.rawMouse && RawMouseInput.Running && RawMouseInput.HasReported)
+            {
+                bool mouseInUse = Time.unscaledTime - RawMouseInput.LastReportTime < 0.25f;
+                if (counts != Vector2.zero)
+                {
+                    look = counts * RawScale;
+                    UsingRaw = true;
+                    systemFrames = 0;
+                }
+                else if (mouseInUse)
+                {
+                    look = Vector2.zero; // the pointer's copy of movement the mouse has already reported
+                    UsingRaw = true;
+                    systemFrames = 0;
+                }
+                else if (RawDelta != Vector2.zero && ++systemFrames < 2)
+                {
+                    look = Vector2.zero; // one stray frame is not a trackpad
+                }
+            }
+
             if (Current == Mode.Recentred)
             {
                 if (look == Vector2.zero) look = moved; // movement that only showed up as a change of position

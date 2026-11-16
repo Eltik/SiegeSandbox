@@ -73,12 +73,25 @@ namespace SiegeSandbox
 
             float w = Screen.width, h = Screen.height;
             float cx = w * 0.5f, cy = h * 0.5f;
+
+            // With a fixed aspect ratio and no stretching, the picture does not fill the window: black out the rest.
+            Rect view = weapon.cam.pixelRect;
+            if (view.width < w - 1f)
+            {
+                Fill(0f, 0f, view.x, h, Color.black);
+                Fill(view.xMax, 0f, w - view.xMax, h, Color.black);
+            }
+            if (view.height < h - 1f)
+            {
+                Fill(0f, 0f, w, h - view.yMax, Color.black);
+                Fill(0f, h - view.y, w, view.y, Color.black);
+            }
             float aim = weapon.AimBlend;
             float unit = h / 720f;
 
             // Crosshair: the gap is the actual spread cone projected onto the screen.
             float halfFov = weapon.cam.fieldOfView * 0.5f * Mathf.Deg2Rad;
-            float gap = Mathf.Tan(weapon.CurrentSpreadDeg * Mathf.Deg2Rad) / Mathf.Tan(halfFov) * cy + 3f * unit;
+            float gap = Mathf.Tan(weapon.CurrentSpreadDeg * Mathf.Deg2Rad) / Mathf.Tan(halfFov) * weapon.cam.pixelHeight * 0.5f + 3f * unit;
             float hipAlpha = (1f - aim) * (player.IsSprinting ? 0.25f : 1f);
             if (hipAlpha > 0.01f)
             {
@@ -133,7 +146,7 @@ namespace SiegeSandbox
                     ? "Heard: " + Sfx.LastWorldSound + "  (" + Sfx.Describe(Sfx.LastPath) + ")"
                     : "Heard: -";
                 string mouse = !player.useDeviceInput ? "Mouse: scripted input"
-                    : "Mouse: " + (player.HasMouse ? "captured (" + MouseCapture.Current.ToString().ToLower() + ")" : "free (click the view)") +
+                    : "Mouse: " + (player.HasMouse ? "captured (" + MouseCapture.Current.ToString().ToLower() + (MouseCapture.UsingRaw ? ", raw" : "") + ")" : "free (click the view)") +
                       "    moving " + player.RawMouseDelta.x.ToString("0") + ", " + player.RawMouseDelta.y.ToString("0");
                 Shadowed(new Rect(w - 900f * unit - pad, pad, 900f * unit, line * 2.6f), heard + "\n" + mouse, topRight);
             }
@@ -154,7 +167,7 @@ namespace SiegeSandbox
                     "Left mouse  fire        R  reload\n" +
                     "Hold F  build / remove barricade\n" +
                     "H  hitbox camera    Tab  hide help\n" +
-                    "Esc  free the cursor";
+                    "Esc  settings";
                 Shadowed(new Rect(pad, pad, 520f * unit, line * 11.6f), help, label);
             }
 
@@ -170,7 +183,7 @@ namespace SiegeSandbox
                 }
             }
 
-            if (player.useDeviceInput && !player.HasMouse)
+            if (player.useDeviceInput && !player.HasMouse && !SettingsMenu.IsOpen)
                 Shadowed(new Rect(cx - 300f * unit, cy - 90f * unit, 600f * unit, line * 1.4f), "Click to play", center);
         }
     }

@@ -24,13 +24,71 @@ namespace SiegeSandbox.Tests
             player.useDeviceInput = false;
             player.input = new PlayerInputState();
             AudioListener.volume = 0f; // the tests play the game at speed; nobody needs to hear that
+            GameSettings.ResetToDefaults(); // whatever is saved on this machine, the tests run on the defaults
+            GameSettings.Apply();
             yield return null;
         }
 
         [TearDown]
-        public void RestoreSound()
+        public void RestoreSoundAndSettings()
         {
             AudioListener.volume = 1f;
+            GameSettings.Load();
+            GameSettings.Apply();
+        }
+
+        [UnityTest]
+        public IEnumerator Settings_ChangeTheViewAndTheControls()
+        {
+            yield return new WaitForSeconds(0.2f);
+            Assert.AreEqual(78f, weapon.cam.fieldOfView, 0.5f, "the default field of view");
+            float window = (float)Screen.width / Screen.height;
+            Assert.AreEqual(window, weapon.cam.aspect, 0.02f, "by default the picture follows the window");
+
+            // Field of view, and the aimed view keeps its zoom relative to it.
+            GameSettings.fov = 90;
+            GameSettings.Apply();
+            yield return new WaitForSeconds(0.2f);
+            Assert.AreEqual(90f, weapon.cam.fieldOfView, 0.5f);
+            Assert.AreEqual(90f * GameSettings.AimZoom, weapon.adsFov, 0.01f);
+
+            // 4:3 stretched: drawn for a 4:3 screen across the whole window.
+            GameSettings.aspect = System.Array.IndexOf(GameSettings.AspectNames, "4:3");
+            GameSettings.stretch = true;
+            yield return null;
+            yield return null;
+            Assert.AreEqual(4f / 3f, weapon.cam.aspect, 0.01f);
+            Assert.AreEqual(1f, weapon.cam.rect.width, 0.001f);
+
+            // 4:3 with black bars: the picture keeps its shape and leaves the sides empty (on a wider window).
+            GameSettings.stretch = false;
+            yield return null;
+            yield return null;
+            if (window > 4f / 3f + 0.05f)
+            {
+                Assert.Less(weapon.cam.rect.width, 0.99f);
+                Assert.AreEqual(4f / 3f, weapon.cam.aspect, 0.03f);
+            }
+
+            // Sensitivity and lean mode reach the player.
+            GameSettings.sensitivity = 100;
+            GameSettings.adsSensitivity = 40;
+            GameSettings.leanToggle = false;
+            GameSettings.volume = 30;
+            GameSettings.Apply();
+            Assert.AreEqual(GameSettings.BaseSensitivity * 2f, player.mouseSensitivity, 0.0001f);
+            Assert.AreEqual(0.4f, player.adsSensitivityScale, 0.0001f);
+            Assert.IsFalse(player.toggleLean);
+            Assert.AreEqual(0.3f, Sfx.MasterVolume, 0.0001f);
+
+            // Back to the defaults.
+            GameSettings.ResetToDefaults();
+            GameSettings.Apply();
+            yield return null;
+            yield return null;
+            Assert.AreEqual(window, weapon.cam.aspect, 0.02f);
+            Assert.IsTrue(GameSettings.rawMouse, "mouse acceleration is off unless you turn it on");
+            Assert.IsTrue(player.toggleLean);
         }
 
         IEnumerator TapCrouch()

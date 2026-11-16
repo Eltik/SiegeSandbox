@@ -172,6 +172,14 @@ namespace SiegeSandbox
             if (useDeviceInput) MouseCapture.Release(); // never walk away still holding the mouse
         }
 
+        /// <summary>Ignore the mouse button that is down right now (a click on a menu is not a shot).</summary>
+        public void SwallowClick()
+        {
+            fireBlockedUntilRelease = true;
+        }
+
+        bool aimToggleState;
+
         void Update()
         {
             float dt = Time.deltaTime;
@@ -199,18 +207,21 @@ namespace SiegeSandbox
             Mouse mouse = Mouse.current;
             PlayerInputState s = new PlayerInputState();
 
-            // The game takes the mouse on a click and gives it back on Escape or when the window loses focus.
-            if (HasMouse && ((kb != null && kb.escapeKey.wasPressedThisFrame) || !Application.isFocused))
+            // The game takes the mouse on a click and gives it back when the window loses focus.
+            // Escape opens the settings menu, which gives it back too (SettingsMenu).
+            if (HasMouse && !Application.isFocused)
             {
                 MouseCapture.Release();
             }
-            else if (!HasMouse && mouse != null && mouse.leftButton.wasPressedThisFrame && Application.isFocused)
+            else if (!HasMouse && !SettingsMenu.IsOpen && mouse != null && mouse.leftButton.wasPressedThisFrame && Application.isFocused)
             {
                 MouseCapture.Take();
                 fireBlockedUntilRelease = true; // the click that grabs the mouse is not a shot
             }
             bool locked = HasMouse;
             Vector2 turn = MouseCapture.Read(mouse); // also keeps the pointer held, and notices if it is not
+            if (GameSettings.invertY) turn.y = -turn.y;
+            if (!locked) aimToggleState = false;
             InputDiagnostics.Tick(mouse, Yaw);
 
             if (kb != null && locked)
@@ -219,7 +230,8 @@ namespace SiegeSandbox
                     (kb.dKey.isPressed ? 1f : 0f) - (kb.aKey.isPressed ? 1f : 0f),
                     (kb.wKey.isPressed ? 1f : 0f) - (kb.sKey.isPressed ? 1f : 0f));
                 s.sprint = kb.leftShiftKey.isPressed;
-                s.crouchPressed = kb.cKey.wasPressedThisFrame;
+                if (GameSettings.crouchToggle) s.crouchPressed = kb.cKey.wasPressedThisFrame;
+                else s.crouchPressed = (kb.cKey.wasPressedThisFrame && Stance != Stance.Crouch) || (kb.cKey.wasReleasedThisFrame && Stance == Stance.Crouch);
                 s.pronePressed = kb.leftCtrlKey.wasPressedThisFrame || kb.rightCtrlKey.wasPressedThisFrame;
                 s.reloadPressed = kb.rKey.wasPressedThisFrame;
                 s.jumpPressed = kb.spaceKey.wasPressedThisFrame;
@@ -242,7 +254,16 @@ namespace SiegeSandbox
             if (mouse != null && locked)
             {
                 s.look = turn;
-                s.aim = mouse.rightButton.isPressed;
+                if (GameSettings.aimToggle)
+                {
+                    if (mouse.rightButton.wasPressedThisFrame) aimToggleState = !aimToggleState;
+                    s.aim = aimToggleState;
+                }
+                else
+                {
+                    aimToggleState = false;
+                    s.aim = mouse.rightButton.isPressed;
+                }
                 if (fireBlockedUntilRelease && !mouse.leftButton.isPressed) fireBlockedUntilRelease = false;
                 s.fire = mouse.leftButton.isPressed && !fireBlockedUntilRelease;
             }

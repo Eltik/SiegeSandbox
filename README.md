@@ -23,7 +23,26 @@ Open `Assets/SiegeSandbox/Scenes/Sandbox.unity` and press Play.
 | R | Reload (animated; longer when the magazine is empty) |
 | H | Toggle the hitbox camera |
 | Tab | Toggle the controls overlay |
-| Esc | Free the cursor (click the Game view to grab it again) |
+| Esc | Settings menu (also frees the cursor) |
+
+## Settings
+
+Escape opens the settings menu (and frees the mouse); Escape again or Resume goes back to the
+game. Changes apply at once and are remembered between sessions.
+
+- **Mouse acceleration** is off by default. On macOS the game reads the mouse's own movement
+  through a small native plugin (`Assets/SiegeSandbox/Plugins/macOS`, source and build script in
+  `Tools/RawMouse`), so a given distance on the desk is always the same turn. A trackpad, or a
+  mouse macOS does not offer for raw input, falls back to the normal pointer; the menu says
+  which is in use. On Windows Unity's mouse input is already raw.
+- **Sensitivity**, **aiming sensitivity** (as a percentage of normal) and **inverted look**.
+- **Lean**, **aim** and **crouch** can each be toggle or hold.
+- **Field of view** (vertical, 60 to 100; the aimed view keeps its zoom relative to it).
+- **Aspect ratio**: Auto, 4:3, 5:4, 3:2, 16:10, 16:9, 21:9, either stretched to fill the window
+  (as in Siege) or with black bars.
+- **Frame rate limit** and **volume**.
+
+The values and their defaults are in `GameSettings`; the menu is `SettingsMenu`.
 
 ## What is modelled
 
@@ -137,7 +156,8 @@ and reverb above is applied to it unchanged.
 
 - `Assets/SiegeSandbox/Runtime` - gameplay scripts (`PlayerController`, `Weapon`,
   `Projectile`, `Target`, `DamageZone`, `Surface`, `HolePanel`, `Barricade`, `SoftWall`,
-  `Interactor`, `Hud`, `HitboxDebugCamera`), with the audio in `Runtime/Audio` (`Synth`, `Sfx`,
+  `Interactor`, `Hud`, `HitboxDebugCamera`, `GameSettings`, `SettingsMenu`, `MouseCapture`,
+  `RawMouseInput`), with the audio in `Runtime/Audio` (`Synth`, `Sfx`,
   `SoundPortal`).
 - `Assets/SiegeSandbox/Editor` - `SandboxBuilder` generates the scene, materials and meshes
   from code (**Siege Sandbox > Build Sandbox Scene**). Edit the builder rather than the
