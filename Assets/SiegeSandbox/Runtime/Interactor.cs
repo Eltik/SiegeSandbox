@@ -1,24 +1,24 @@
-using System.Collections.Generic;
 using UnityEngine;
 
 namespace SiegeSandbox
 {
     /// <summary>
-    /// Barricading, Siege style: hold the interact key at an open doorway or window and the
-    /// planks are carried up and hammered on one at a time, bottom to top. Hold it at a standing
-    /// barricade to pull the planks off again. Letting go or walking away abandons the job, and
-    /// a half-built barricade falls apart. The weapon is lowered the whole time.
+    /// Barricading, Siege style. Hold the interact key at an open doorway or window: the
+    /// barricade is hung from the top of the frame, unrolls down it and is nailed in place. Let
+    /// go early and it comes away again. Hold the key at a standing barricade and it is levered
+    /// off with a crowbar, all in one piece at the end. The weapon is lowered the whole time.
     /// </summary>
     [DefaultExecutionOrder(-5)] // after the player reads input, before the weapon decides whether it may fire
     public class Interactor : MonoBehaviour
     {
         public PlayerController player;
         public Transform hands;        // root of the two work arms, hidden unless busy
-        public Transform hammerArm;    // swings on each plank
+        public Transform toolArm;      // swings the hammer, levers the crowbar
+        public GameObject hammer;
+        public GameObject crowbar;
         public float reach = 2.3f;
-        public float plankInterval = 0.16f;   // seconds between planks going up
-        public float removeInterval = 0.09f;  // seconds between planks coming off
-        public float carryTime = 0.14f;       // how long a plank takes to travel from hands to wall
+        public float deployTime = 2.0f;
+        public float removeTime = 1.5f;
 
         /// <summary>Text for the HUD, empty when there is nothing to interact with.</summary>
         public string Prompt { get; private set; }
@@ -26,20 +26,13 @@ namespace SiegeSandbox
         public float Progress { get; private set; }
         public bool IsBusy { get; private set; }
 
-        struct Carry
-        {
-            public Transform plank;
-            public Vector3 from;
-            public Quaternion fromRotation;
-            public Vector3 to;
-            public float elapsed;
-        }
+        static readonly float[] HammerBeats = { 0.08f, 0.2f, 0.55f, 0.8f, 0.93f };
+        static readonly float[] PryBeats = { 0.15f, 0.5f, 0.85f };
 
-        readonly List<Carry> carries = new List<Carry>();
         Barricade active;
         bool building, needRelease;
-        float timer, hammerPulse, handsBlend;
-        int launched, removed;
+        float timer, pulse, handsBlend;
+        int beat, lastBoards;
 
         void Awake()
         {
@@ -55,38 +48,12 @@ namespace SiegeSandbox
             bool held = player.input.interactHeld;
             if (!held) needRelease = false;
 
-            UpdateCarries(dt);
-
             if (IsBusy)
             {
                 bool tooFar = active == null || Vector3.Distance(active.ClosestPoint(eye.position), eye.position) > reach + 0.6f;
-                if (!held || tooFar || (building && !HasRoomToBuild(active)))
-                {
-                    Abandon();
-                }
-                else if (building)
-                {
-                    timer += dt;
-                    while (launched < active.PlankCount && timer >= launched * plankInterval)
-                    {
-                        Launch(launched, eye);
-                        launched++;
-                    }
-                    Progress = active.PlanksPlaced / (float)active.PlankCount;
-                    if (active.IsComplete && carries.Count == 0) Finish();
-                }
-                else
-                {
-                    timer += dt;
-                    while (active.PlanksPlaced > 0 && timer >= 0.15f + removed * removeInterval)
-                    {
-                        active.RemoveTopPlank(eye.position - active.ClosestPoint(eye.position));
-                        removed++;
-                        hammerPulse = 1f;
-                    }
-                    Progress = 1f - active.PlanksPlaced / (float)active.PlankCount;
-                    if (active.PlanksPlaced == 0) Finish();
-                }
+                if (!held || tooFar || (building && !HasRoomToBuild(active))) Abandon();
+                else if (building) Deploy(dt);
+                else Remove(dt, eye);
             }
             else
             {
@@ -101,11 +68,12 @@ namespace SiegeSandbox
                     active = target;
                     building = !target.IsBuilt;
                     timer = 0f;
-                    launched = 0;
-                    removed = 0;
+                    beat = 0;
+                    lastBoards = 0;
                     Progress = 0f;
                     IsBusy = true;
                     Prompt = building ? "Barricading..." : "Removing barricade...";
+                    Sfx.PlayLocal(SoundId.Cloth, 0.5f);
                 }
             }
 
@@ -113,55 +81,53 @@ namespace SiegeSandbox
             AnimateHands(dt);
         }
 
-        // ------------------------------------------------------------------ planks in flight
-
-        void Launch(int index, Transform eye)
+        void Deploy(float dt)
         {
-            Carry c = new Carry();
-            c.from = eye.position + eye.forward * 0.45f - eye.up * 0.28f;
-            c.fromRotation = eye.rotation * Quaternion.Euler(20f, 0f, Random.Range(-12f, 12f));
-            c.to = active.PlankWorldCenter(index);
-            GameObject plank = Prims.Cube("CarriedPlank", null, c.from, active.PlankSize, active.plankMaterial, false);
-            plank.transform.rotation = c.fromRotation;
-            c.plank = plank.transform;
-            carries.Add(c);
-        }
+            timer += dt;
+            Progress = Mathf.Clamp01(timer / deployTime);
 
-        void UpdateCarries(float dt)
-        {
-            for (int i = 0; i < carries.Count; i++)
+            // It unrolls down the frame through the middle of the action...
+            float unrolled = Mathf.InverseLerp(0.22f, 0.78f, Progress);
+            int boards = Mathf.CeilToInt(unrolled * active.PlankCount);
+            if (boards > lastBoards)
             {
-                Carry c = carries[i];
-                c.elapsed += dt;
-                float t = Mathf.Clamp01(c.elapsed / Mathf.Max(0.01f, carryTime));
-                float k = t * t; // accelerates into the wall, like being slapped on
-                if (c.plank != null)
-                {
-                    c.plank.position = Vector3.Lerp(c.from, c.to, k);
-                    if (active != null) c.plank.rotation = Quaternion.Slerp(c.fromRotation, active.transform.rotation, k);
-                }
-                carries[i] = c;
+                active.SetDeployed(boards);
+                if (lastBoards == 0 || boards / 3 != lastBoards / 3)
+                    Sfx.Play(SoundId.BarricadeUnroll, active.PlankWorldCenter(active.PlankCount - boards), 0.7f);
+                lastBoards = boards;
+            }
 
-                if (t >= 1f)
-                {
-                    // Arrived: it becomes part of the barricade and the hammer comes down on it.
-                    if (c.plank != null) Destroy(c.plank.gameObject);
-                    if (active != null && building) active.PlaceNextPlank();
-                    hammerPulse = 1f;
-                    carries.RemoveAt(i);
-                    i--;
-                }
+            // ...and is nailed at the top before and at the bottom after.
+            while (beat < HammerBeats.Length && Progress >= HammerBeats[beat])
+            {
+                pulse = 1f;
+                Sfx.Play(SoundId.Hammer, active.PlankWorldCenter(beat < 2 ? active.PlankCount - 1 : 0), 0.9f);
+                beat++;
+            }
+
+            if (Progress >= 1f)
+            {
+                active.BuildAll();
+                Finish();
             }
         }
 
-        void DropCarries()
+        void Remove(float dt, Transform eye)
         {
-            for (int i = 0; i < carries.Count; i++)
-                if (carries[i].plank != null) Destroy(carries[i].plank.gameObject);
-            carries.Clear();
+            timer += dt;
+            Progress = Mathf.Clamp01(timer / removeTime);
+            while (beat < PryBeats.Length && Progress >= PryBeats[beat])
+            {
+                pulse = 1f;
+                Sfx.Play(SoundId.Pry, active.ClosestPoint(eye.position), 0.8f, 0.9f + 0.1f * beat);
+                beat++;
+            }
+            if (Progress >= 1f)
+            {
+                active.PryOff(eye.position - active.ClosestPoint(eye.position));
+                Finish();
+            }
         }
-
-        // ------------------------------------------------------------------ outcomes
 
         void Finish()
         {
@@ -171,10 +137,8 @@ namespace SiegeSandbox
 
         void Abandon()
         {
-            DropCarries();
-            // A half-nailed barricade does not hold.
-            if (building && active != null && !active.IsComplete)
-                active.Clear(true, player.cam.transform.position - active.ClosestPoint(player.cam.transform.position));
+            // A barricade that is not nailed at the bottom does not stay up. Prying has no effect until it is done.
+            if (building && active != null) active.Retract();
             needRelease = true;
             Stop();
         }
@@ -217,19 +181,21 @@ namespace SiegeSandbox
         {
             if (hands == null) return;
             handsBlend = Mathf.MoveTowards(handsBlend, IsBusy ? 1f : 0f, dt * 6f);
-            hammerPulse = Mathf.MoveTowards(hammerPulse, 0f, dt * 8f);
+            pulse = Mathf.MoveTowards(pulse, 0f, dt * 7f);
 
             bool show = handsBlend > 0.01f;
             if (hands.gameObject.activeSelf != show) hands.gameObject.SetActive(show);
             if (!show) return;
 
-            // Arms come up from below the view; the hammer arm cocks back, then snaps down on each plank.
+            if (hammer != null && hammer.activeSelf != building) hammer.SetActive(building);
+            if (crowbar != null && crowbar.activeSelf == building) crowbar.SetActive(!building);
+
+            // Arms come up from below the view. Hammer: cocked back, snapping down on each nail.
+            // Crowbar: pushed in, then hauled back on each heave.
             hands.localPosition = new Vector3(0f, Mathf.Lerp(-0.45f, 0f, Mathf.SmoothStep(0f, 1f, handsBlend)), 0f);
-            if (hammerArm != null)
-            {
-                float swing = building ? Mathf.Lerp(-48f, 14f, hammerPulse) : Mathf.Lerp(0f, -30f, hammerPulse);
-                hammerArm.localRotation = Quaternion.Euler(swing, building ? 0f : -10f * hammerPulse, 0f);
-            }
+            if (toolArm == null) return;
+            if (building) toolArm.localRotation = Quaternion.Euler(Mathf.Lerp(-48f, 14f, pulse), 0f, 0f);
+            else toolArm.localRotation = Quaternion.Euler(Mathf.Lerp(-8f, -34f, pulse), Mathf.Lerp(0f, -14f, pulse), 0f);
         }
     }
 }

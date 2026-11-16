@@ -129,6 +129,12 @@ namespace SiegeSandbox
                 info.zone = zone;
                 info.impulse = 70f;
                 target.TakeDamage(info);
+                if (target is Target)
+                {
+                    bool head = zone != null && zone.isHead;
+                    Sfx.Play(head ? SoundId.Headshot : SoundId.ImpactFlesh, hit.point, 1f, 1f, 3f);
+                    Sfx.PlayLocal(SoundId.HitTick, 0.45f); // hit confirmation
+                }
             }
 
             Surface surface = col.GetComponentInParent<Surface>();
@@ -138,18 +144,28 @@ namespace SiegeSandbox
                 damage *= surface.damageKept;
                 if (damage >= MinDamage)
                 {
-                    if (target == null && sheet != BulletSurfaceResult.Punched) Mark(hit, 0.04f); // a bullet hole in solid wood
+                    if (target == null && sheet != BulletSurfaceResult.Punched)
+                    {
+                        Mark(hit, 0.04f); // a bullet hole in solid wood
+                        Sfx.Play(SoundId.ImpactWood, hit.point, 0.8f);
+                    }
                     return false;
                 }
             }
 
-            if (target == null && sheet != BulletSurfaceResult.Punched) Mark(hit, 0.06f);
+            if (target == null && sheet != BulletSurfaceResult.Punched)
+            {
+                Mark(hit, 0.06f);
+                bool wood = surface != null && surface.kind == SurfaceKind.Wood;
+                Sfx.Play(wood ? SoundId.ImpactWood : SoundId.ImpactHard, hit.point, 0.8f);
+            }
             Destroy(gameObject);
             return true;
         }
 
         void Mark(RaycastHit hit, float size)
         {
+            if (impactMaterial == null) return; // a bare test projectile leaves no decal
             GameObject mark = Prims.Cube("Impact", null, hit.point + hit.normal * 0.01f, new Vector3(size, size, 0.02f), impactMaterial, false);
             mark.layer = Prims.IgnoreRaycastLayer;
             mark.transform.rotation = Quaternion.LookRotation(hit.normal);

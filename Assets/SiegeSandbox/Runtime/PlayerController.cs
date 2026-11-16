@@ -129,7 +129,7 @@ namespace SiegeSandbox
         float lastGroundedTime = -10f, lastJumpTime = -10f, jumpBufferedUntil = -1f;
         bool wasGrounded = true;
         float landDip, bobPhase, bobWeight;
-        float leanVelocity;
+        float leanVelocity, stepTimer, lastLeanTarget;
         Vector3 vaultFrom, vaultControl, vaultTo, vaultDirection;
         float vaultElapsed, vaultDuration, jumpStartY;
 
@@ -151,6 +151,7 @@ namespace SiegeSandbox
         void Start()
         {
             if (useDeviceInput) LockCursor(true);
+            Sfx.Warm(); // build the sounds now rather than on the first shot
         }
 
         void OnDestroy()
@@ -271,6 +272,7 @@ namespace SiegeSandbox
                 if (s == Stance.Stand && Stance == Stance.Prone && HasHeadroom(crouchHeight)) Stance = Stance.Crouch;
                 return false;
             }
+            if (Stance != s) Sfx.PlayLocal(SoundId.Cloth, s == Stance.Prone || Stance == Stance.Prone ? 0.6f : 0.4f); // kit shifting
             Stance = s;
             return true;
         }
@@ -343,6 +345,7 @@ namespace SiegeSandbox
                 {
                     vy = Mathf.Sqrt(2f * jumpHeight * -gravity);
                     jumpStartY = transform.position.y;
+                    Sfx.PlayLocal(SoundId.Jump, 0.6f);
                     lastJumpTime = Time.time;
                     lastGroundedTime = -10f;
                     grounded = false;
@@ -373,7 +376,11 @@ namespace SiegeSandbox
                 return;
 
             bool nowGrounded = cc.isGrounded;
-            if (nowGrounded && !wasGrounded && vy < -3f) landDip = Mathf.Clamp(-vy * 0.012f, 0f, 0.12f);
+            if (nowGrounded && !wasGrounded && vy < -3f)
+            {
+                landDip = Mathf.Clamp(-vy * 0.012f, 0f, 0.12f);
+                Sfx.PlayLocal(SoundId.Land, Mathf.Clamp01(-vy / 9f));
+            }
             wasGrounded = nowGrounded;
             IsGrounded = nowGrounded;
             landDip = Mathf.MoveTowards(landDip, 0f, dt * 0.5f);
@@ -384,6 +391,25 @@ namespace SiegeSandbox
             bobPhase += planarSpeed * dt * 2.6f;
             float amp = (IsSprinting ? 0.035f : 0.014f) * Mathf.Lerp(1f, 0.15f, AimBlend) * (Stance == Stance.Prone ? 0.5f : 1f);
             BobOffset = new Vector2(Mathf.Cos(bobPhase * 0.5f), Mathf.Sin(bobPhase)) * (amp * bobWeight);
+
+            // Footsteps: how often and how loud depends on how you are moving. Crouching is close to silent.
+            float stepInterval = Stance == Stance.Prone ? 0.75f : (Stance == Stance.Crouch ? 0.55f : (IsSprinting ? 0.30f : 0.42f));
+            if (nowGrounded && planarSpeed > 0.6f)
+            {
+                stepTimer += dt;
+                if (stepTimer >= stepInterval)
+                {
+                    stepTimer = 0f;
+                    if (Stance == Stance.Prone) Sfx.PlayLocal(SoundId.Crawl, 0.35f);
+                    else if (IsSprinting) Sfx.PlayLocal(SoundId.Footstep, 1f, 1.05f);
+                    else if (Stance == Stance.Crouch) Sfx.PlayLocal(SoundId.Footstep, 0.2f, 0.9f);
+                    else Sfx.PlayLocal(SoundId.Footstep, Mathf.Lerp(0.6f, 0.35f, AimBlend), 0.95f);
+                }
+            }
+            else
+            {
+                stepTimer = stepInterval * 0.6f; // the first step lands soon after you set off
+            }
         }
 
         // ------------------------------------------------------------------ vault
@@ -463,6 +489,7 @@ namespace SiegeSandbox
             IsSprinting = false;
             Stance = lowSlot ? Stance.Prone : Stance.Crouch;
             cc.enabled = false;
+            Sfx.PlayLocal(SoundId.Cloth, 0.7f, 0.85f);
             return true;
         }
 
@@ -484,6 +511,7 @@ namespace SiegeSandbox
                 wasGrounded = true;
                 Stance = Stance.Crouch;
                 TrySetStance(Stance.Stand);
+                Sfx.PlayLocal(SoundId.Land, 0.45f);
                 // Keep moving if the player is still pushing forward, so the climb flows into a walk.
                 velocity = input.move.y > 0.1f ? vaultDirection * walkSpeed : Vector3.zero;
             }
@@ -528,6 +556,8 @@ namespace SiegeSandbox
                     target *= Mathf.Clamp01(hit.distance / dist);
             }
 
+            if (Mathf.Abs(target - lastLeanTarget) > 0.5f) Sfx.PlayLocal(SoundId.Cloth, 0.2f, 1.15f);
+            lastLeanTarget = target;
             Lean = Mathf.SmoothDamp(Lean, target, ref leanVelocity, leanSmoothTime, Mathf.Infinity, dt);
             LeanChangeRate = Mathf.Abs(leanVelocity);
         }

@@ -52,6 +52,7 @@ namespace SiegeSandbox
                 IsAlive = false;
                 respawnTimer = respawnDelay;
                 SpawnCorpse(info);
+                Sfx.Play(SoundId.BodyFall, transform.position + Vector3.up * 0.4f, 0.9f, 1f, 2f, 0.45f);
                 if (visual != null) visual.SetActive(false);
             }
             if (Damaged != null) Damaged.Invoke(this, amount, info.zone, killed);

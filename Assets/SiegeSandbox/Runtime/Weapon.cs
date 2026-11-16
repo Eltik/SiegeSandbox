@@ -94,6 +94,7 @@ namespace SiegeSandbox
         float kick, sprintBlend, reloadPose, busyBlend;
         float reloadElapsed, meleeElapsed;
         bool reloadFromEmpty, magSeated, meleeHitDone;
+        bool heardMagOut, heardBoltBack, heardBoltForward, firedLastFrame, aimedLastFrame;
         Vector3 magRest, boltRest, armRest;
 
         /// <summary>Climbs hard for the first shots, then drifts right, left, and right again.</summary>
@@ -173,11 +174,17 @@ namespace SiegeSandbox
             float dt = Time.deltaTime;
             PlayerInputState inp = player.input;
 
+            // Pulling the trigger on an empty or open gun just clicks.
+            if (inp.fire && !firedLastFrame && (Ammo == 0 || IsReloading)) Sfx.PlayLocal(SoundId.DryFire, 0.6f);
+            firedLastFrame = inp.fire;
+
             UpdateMelee(inp, dt);
             UpdateReload(inp, dt);
 
             bool busy = player.HandsBusy;
             bool wantsAim = inp.aim && !player.IsSprinting && !IsReloading && !IsMeleeing && !busy;
+            if (wantsAim != aimedLastFrame) Sfx.PlayLocal(SoundId.Cloth, 0.22f, wantsAim ? 1.1f : 0.9f); // sling and sleeve
+            aimedLastFrame = wantsAim;
             AimBlend = Mathf.MoveTowards(AimBlend, wantsAim ? 1f : 0f, dt / Mathf.Max(0.01f, adsTime));
             player.AimBlend = AimBlend;
             float aim = Mathf.SmoothStep(0f, 1f, AimBlend);
@@ -220,6 +227,8 @@ namespace SiegeSandbox
             Vector2 offset = Random.insideUnitCircle * CurrentSpreadDeg;
             Quaternion rot = cam.transform.rotation * Quaternion.Euler(-offset.y, offset.x, 0f);
             Vector3 dir = rot * Vector3.forward;
+            Sfx.PlayLocal(SoundId.GunShot, 1f);
+            Sfx.PlayLocal(SoundId.ShellCasing, 0.28f, 1f, Random.Range(0.35f, 0.5f)); // brass reaching the floor
             Projectile shot = Projectile.Spawn(cam.transform.position, dir * muzzleVelocity, damage, gravityScale, tracerMaterial, impactMaterial);
             shot.SetFalloff(falloffStart, falloffEnd, falloffMinScale);
 
@@ -256,17 +265,35 @@ namespace SiegeSandbox
                     reloadElapsed = 0f;
                     reloadFromEmpty = Ammo == 0;
                     magSeated = false;
+                    heardMagOut = heardBoltBack = heardBoltForward = false;
+                    Sfx.PlayLocal(SoundId.Cloth, 0.35f);
                 }
                 return;
             }
 
             reloadElapsed += dt;
             float u = ReloadTimelinePosition();
+            if (!heardMagOut && u >= TiltEnd)
+            {
+                heardMagOut = true;
+                Sfx.PlayLocal(SoundId.MagOut, 0.8f);
+            }
             if (!magSeated && u >= MagSeat)
             {
                 // The rounds only count once the new magazine clicks in.
                 magSeated = true;
                 Ammo = magazineSize;
+                Sfx.PlayLocal(SoundId.MagIn, 0.9f);
+            }
+            if (reloadFromEmpty && !heardBoltBack && u >= BoltStart + 0.05f)
+            {
+                heardBoltBack = true;
+                Sfx.PlayLocal(SoundId.BoltBack, 0.8f);
+            }
+            if (reloadFromEmpty && !heardBoltForward && u >= BoltStart + (BoltEnd - BoltStart) * 0.62f)
+            {
+                heardBoltForward = true;
+                Sfx.PlayLocal(SoundId.BoltForward, 0.9f);
             }
             if (u >= (reloadFromEmpty ? EmptyLength : TacticalLength)) IsReloading = false;
         }
@@ -281,6 +308,7 @@ namespace SiegeSandbox
                 IsMeleeing = true;
                 meleeElapsed = 0f;
                 meleeHitDone = false;
+                Sfx.PlayLocal(SoundId.MeleeSwing, 0.8f);
                 // A strike interrupts a reload. If the new magazine is already in, the reload still counts.
                 IsReloading = false;
             }
@@ -382,7 +410,7 @@ namespace SiegeSandbox
             SoftWall softWall = struck.GetComponentInParent<SoftWall>();
             if (softWall != null)
             {
-                softWall.Punch(point, dir, 0.26f);
+                softWall.Punch(point, dir);
                 MeleeHits++;
                 return;
             }
@@ -398,6 +426,7 @@ namespace SiegeSandbox
                 info.melee = true;
                 info.impulse = 220f;
                 target.TakeDamage(info);
+                Sfx.Play(SoundId.ImpactFlesh, point, 1f, 0.85f);
                 MeleeHits++;
             }
         }

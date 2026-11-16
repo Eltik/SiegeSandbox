@@ -344,7 +344,7 @@ namespace SiegeSandbox.Tests
             yield return new WaitForSeconds(0.3f);
             Assert.AreEqual(1, wall.BulletHoles);
             Assert.IsTrue(wall.IsOpenAt(onWall), "the bullet should leave a hole where it hit");
-            Assert.Less(wall.OpenFraction, 0.002f, "a bullet hole is a few centimetres across, not a missing panel");
+            Assert.Less(wall.OpenFraction, 0.0006f, "a bullet hole is a few centimetres across");
             Assert.AreEqual(100f - 34f * 0.8f, behindSoft.Health, 0.1f, "punching through costs the bullet some damage");
 
             // A second bullet through the same hole touches nothing on the way.
@@ -364,7 +364,30 @@ namespace SiegeSandbox.Tests
         }
 
         [UnityTest]
-        public IEnumerator SoftWall_MeleeTearsOutALargeRaggedHole()
+        public IEnumerator SoftWall_ClusteredBulletsBreakOutAChunk()
+        {
+            SoftWall wall = GameObject.Find("SoftWall").GetComponent<SoftWall>();
+
+            // Four holes a few centimetres apart: still four separate little holes.
+            Vector3 centre = new Vector3(-1.75f, 2.5f, -10f);
+            Vector3[] spread = { new Vector3(-0.06f, 0f, 0f), new Vector3(0.06f, 0f, 0f), new Vector3(0f, 0.06f, 0f), new Vector3(0f, -0.06f, 0f) };
+            foreach (Vector3 offset in spread) Shoot(centre + offset);
+            yield return new WaitForSeconds(0.3f);
+            Assert.AreEqual(4, wall.BulletHoles);
+            Assert.AreEqual(0, wall.ChunkHoles);
+            Assert.IsFalse(wall.IsOpenAt(new Vector3(-1.75f, 2.5f, -8f)), "the sheet between the holes should still be there");
+            float before = wall.OpenFraction;
+
+            // The fifth one in the cluster breaks the piece between them out.
+            Shoot(centre + new Vector3(0.03f, 0.03f, 0f));
+            yield return new WaitForSeconds(0.3f);
+            Assert.AreEqual(1, wall.ChunkHoles, "enough bullets close together should break a chunk out");
+            Assert.IsTrue(wall.IsOpenAt(new Vector3(-1.75f, 2.5f, -8f)));
+            Assert.Greater(wall.OpenFraction, before * 3f);
+        }
+
+        [UnityTest]
+        public IEnumerator SoftWall_MeleeKnocksASmallPeekHole()
         {
             SoftWall wall = GameObject.Find("SoftWall").GetComponent<SoftWall>();
             player.Teleport(new Vector3(-2.2f, 0.05f, -9f), 0f);
@@ -373,70 +396,101 @@ namespace SiegeSandbox.Tests
             yield return new WaitForSeconds(0.6f);
 
             Assert.AreEqual(1, wall.MeleeHoles);
-            // About half a metre across on a 12 square metre wall: between 0.8% and 4% of it.
-            Assert.Greater(wall.OpenFraction, 0.008f, "a melee hole should be much bigger than a bullet hole");
-            Assert.Less(wall.OpenFraction, 0.04f, "but it is a hole, not a missing section of wall");
+            // Roughly 22 cm across on a 12 square metre wall: about a third of a percent of it.
+            Assert.Greater(wall.OpenFraction, 0.0015f, "a melee hole should be clearly bigger than a bullet hole");
+            Assert.Less(wall.OpenFraction, 0.008f, "but still a peek hole, not a doorway");
             Assert.IsTrue(wall.IsOpenAt(new Vector3(-2.2f, 1.67f, -8f)));
         }
 
         [UnityTest]
-        public IEnumerator Barricade_SplintersToBullets_AndFallsToThreeStrikes()
+        public IEnumerator Barricade_BoardsBreakIndividually_AndTwentyBulletsDestroyIt()
         {
             Barricade window = GameObject.Find("Barricade_Window").GetComponent<Barricade>();
             Target behind = GameObject.Find("Target_Window").GetComponent<Target>();
             Assert.IsTrue(window.IsComplete);
             Assert.AreEqual(5, window.PlankCount);
 
-            // A bullet splinters a hole and carries on weaker; the next one through that hole does not.
-            Vector3 muzzle = new Vector3(-8f, 1.45f, -10f);
+            // One bullet: a small hole, the board stays, and the bullet carries on weaker.
+            Vector3 muzzle = new Vector3(-8f, 1.45f, -10f);   // third board up, in line with the dummy
             Shoot(muzzle);
             yield return new WaitForSeconds(0.3f);
             Assert.AreEqual(1, window.BulletHoles);
-            Assert.IsTrue(window.IsBuilt, "one bullet should not bring a barricade down");
+            Assert.IsTrue(window.IsComplete, "one bullet should not break a board");
             Assert.AreEqual(100f - 34f * 0.75f, behind.Health, 0.1f);
+
+            // Through that same hole: nothing in the way.
             Shoot(muzzle);
             yield return new WaitForSeconds(0.3f);
             Assert.AreEqual(1, window.BulletHoles);
             Assert.AreEqual(100f - 34f * 0.75f - 34f, behind.Health, 0.1f);
 
-            // Melee: still standing after two strikes, gone after the third.
-            player.Teleport(new Vector3(-8f, 0.05f, -9f), 0f);
-            yield return new WaitForSeconds(0.2f);
-            for (int i = 0; i < 2; i++)
+            // Two more into the same board (elsewhere along it) break that board off, and only that one.
+            Shoot(muzzle + new Vector3(-1.0f, 0f, 0f));
+            Shoot(muzzle + new Vector3(1.0f, 0f, 0f));
+            yield return new WaitForSeconds(0.3f);
+            Assert.IsFalse(window.IsPlankPresent(2), "three bullets in one board should break it off");
+            Assert.AreEqual(4, window.PlanksPresent, "the other boards should be untouched");
+
+            // Keep shooting the rest: by twenty bullets it is gone.
+            float[] rows = { 1.09f, 1.27f, 1.63f, 1.81f };
+            for (int i = 0; i < 17 && window.IsBuilt; i++)
             {
-                yield return Tap(k => { k.meleePressed = true; return k; });
-                yield return new WaitForSeconds(0.6f);
+                Shoot(new Vector3(-9.2f + 0.14f * i, rows[i % 4], -10f));
+                yield return new WaitForSeconds(0.12f);
             }
-            Assert.IsTrue(window.IsBuilt, "two strikes should leave it damaged but standing");
-            Assert.Greater(window.OpenFraction, 0.1f);
-            yield return Tap(k => { k.meleePressed = true; return k; });
-            yield return new WaitForSeconds(0.6f);
-            Assert.IsFalse(window.IsBuilt, "the third strike should bring it down");
+            yield return new WaitForSeconds(0.2f);
+            Assert.IsFalse(window.IsBuilt, "about twenty bullets should destroy a barricade");
         }
 
         [UnityTest]
-        public IEnumerator Barricade_IsNailedUpPlankByPlank_WhileTheKeyIsHeld()
+        public IEnumerator Barricade_ThirdMeleeStrikeAlwaysDestroysIt()
+        {
+            Barricade window = GameObject.Find("Barricade_Window").GetComponent<Barricade>();
+            player.Teleport(new Vector3(-8f, 0.05f, -9f), 0f);
+            yield return new WaitForSeconds(0.2f);
+
+            yield return Tap(k => { k.meleePressed = true; return k; });
+            yield return new WaitForSeconds(0.6f);
+            Assert.IsTrue(window.IsBuilt);
+            Assert.Less(window.PlanksPresent, window.PlankCount, "the first strike should knock boards out");
+            int afterOne = window.PlanksPresent;
+
+            yield return Tap(k => { k.meleePressed = true; return k; });
+            yield return new WaitForSeconds(0.6f);
+            Assert.IsTrue(window.IsBuilt, "two strikes should leave it damaged but standing");
+            Assert.Less(window.PlanksPresent, afterOne);
+
+            yield return Tap(k => { k.meleePressed = true; return k; });
+            yield return new WaitForSeconds(0.6f);
+            Assert.IsFalse(window.IsBuilt, "the third strike should always bring it down");
+        }
+
+        [UnityTest]
+        public IEnumerator Barricade_UnrollsWhileHeld_AndIsPriedOffInOnePiece()
         {
             Barricade door = GameObject.Find("Barricade_Door").GetComponent<Barricade>();
             Interactor interactor = player.GetComponent<Interactor>();
             Assert.IsFalse(door.IsBuilt);
+            int top = door.PlankCount - 1;
 
             player.Teleport(new Vector3(0f, 0.05f, -9.3f), 0f);
             yield return new WaitForSeconds(0.2f);
             StringAssert.Contains("barricade", interactor.Prompt);
 
-            // Let go part-way: the half-built barricade falls apart.
+            // Part-way through it has unrolled from the top but not reached the floor.
             PlayerInputState s = player.input;
             s.interactHeld = true;
             player.input = s;
-            yield return new WaitForSeconds(0.7f);
+            yield return new WaitForSeconds(1.0f);
             Assert.IsTrue(interactor.IsBusy);
-            Assert.Greater(door.PlanksPlaced, 1, "planks should be going up one at a time");
-            Assert.Less(door.PlanksPlaced, door.PlankCount);
+            Assert.IsTrue(door.IsPlankPresent(top), "it should unroll from the top");
+            Assert.IsFalse(door.IsPlankPresent(0), "and not have reached the bottom yet");
+
+            // Let go: it comes away again.
             s.interactHeld = false;
             player.input = s;
             yield return new WaitForSeconds(0.2f);
-            Assert.IsFalse(door.IsBuilt, "an abandoned barricade should not hold");
+            Assert.IsFalse(door.IsBuilt, "an abandoned barricade should not stay up");
             Assert.IsFalse(interactor.IsBusy);
 
             // Hold it all the way, and try to shoot while doing it.
@@ -449,25 +503,52 @@ namespace SiegeSandbox.Tests
             s.fire = false;
             player.input = s;
             Assert.AreEqual(shots, weapon.ShotsFired, "you cannot shoot while building");
-            yield return new WaitForSeconds(1.5f);
+            yield return new WaitForSeconds(1.4f);
             Assert.IsTrue(door.IsComplete, "the doorway should now be boarded up");
-            Assert.AreEqual(12, door.PlanksPlaced);
             Assert.IsFalse(interactor.IsBusy);
 
             // Still holding the key must not start tearing it down again.
             yield return new WaitForSeconds(0.4f);
             Assert.IsTrue(door.IsComplete);
 
-            // Release, then hold again to pull the planks off.
+            // Release, then hold again: nothing comes off until the crowbar finishes, then all of it does.
             s.interactHeld = false;
             player.input = s;
             yield return null;
             s.interactHeld = true;
             player.input = s;
-            yield return new WaitForSeconds(1.7f);
+            yield return new WaitForSeconds(0.9f);
+            Assert.IsTrue(door.IsComplete, "prying should not remove boards one by one");
+            yield return new WaitForSeconds(1.0f);
             s.interactHeld = false;
             player.input = s;
-            Assert.IsFalse(door.IsBuilt, "holding the key at a barricade should take it down");
+            Assert.IsFalse(door.IsBuilt, "holding the key at a barricade should pry it off");
+        }
+
+        [UnityTest]
+        public IEnumerator Barricade_LetsYouCrawlUnderOnceTheBottomBoardsAreGone()
+        {
+            Barricade door = GameObject.Find("Barricade_Door").GetComponent<Barricade>();
+            door.BuildAll();
+            player.Teleport(new Vector3(0f, 0.05f, -9.0f), 0f);
+            yield return new WaitForSeconds(0.2f);
+            yield return TapProne();
+            yield return new WaitForSeconds(0.6f);
+
+            // Intact: no way under (the gap at the bottom is only big enough for a drone).
+            PlayerInputState s = player.input;
+            s.move = new Vector2(0f, 1f);
+            player.input = s;
+            yield return new WaitForSeconds(1.5f);
+            Assert.Less(player.transform.position.z, -8.2f, "an intact barricade should stop a crawling player");
+
+            // Take the bottom three boards off and crawl through; that brings the rest down.
+            for (int i = 0; i < 3; i++) door.BreakPlank(i, Vector3.forward);
+            yield return new WaitForSeconds(2.2f);
+            s.move = Vector2.zero;
+            player.input = s;
+            Assert.Greater(player.transform.position.z, -7.9f, "the player should have crawled under");
+            Assert.IsFalse(door.IsBuilt, "going through a damaged barricade destroys what is left");
         }
 
         [UnityTest]
@@ -594,14 +675,125 @@ namespace SiegeSandbox.Tests
             Assert.Less(player.transform.position.z, -8.4f);
 
             // ...but an open one can.
-            window.Clear(false, Vector3.zero);
-            yield return null;
+            // With its lower boards knocked out it can be climbed through, which destroys the rest.
+            for (int i = 0; i < 4; i++) window.BreakPlank(i, Vector3.forward);
+            Assert.IsTrue(window.IsBuilt);
             yield return null;
             player.Teleport(new Vector3(-8f, 0.05f, -8.9f), 0f);
             yield return new WaitForSeconds(0.3f);
             yield return JumpForward(v => climbed = v);
-            Assert.IsTrue(climbed, "an open window should be climbable");
+            Assert.IsTrue(climbed, "a window with its lower boards gone should be climbable");
             Assert.Greater(player.transform.position.z, -7.7f, "the player should be through the window");
+            Assert.IsFalse(window.IsBuilt, "climbing through should destroy what was left of the barricade");
+        }
+
+        [Test]
+        public void Sound_EveryEffectIsSynthesizedCleanly()
+        {
+            for (int id = 0; id < (int)SoundId.Count; id++)
+            {
+                for (int v = 0; v < Synth.Variants((SoundId)id); v++)
+                {
+                    float[] wave = Synth.Samples((SoundId)id, v);
+                    Assert.Greater(wave.Length, 1000, (SoundId)id + " is too short to be a sound");
+                    float peak = 0f, energy = 0f;
+                    foreach (float x in wave)
+                    {
+                        Assert.IsFalse(float.IsNaN(x), (SoundId)id + " contains NaN");
+                        peak = Mathf.Max(peak, Mathf.Abs(x));
+                        energy += x * x;
+                    }
+                    Assert.LessOrEqual(peak, 1f, (SoundId)id + " would clip");
+                    Assert.Greater(peak, 0.2f, (SoundId)id + " is nearly silent");
+                    Assert.Greater(Mathf.Sqrt(energy / wave.Length), 0.005f, (SoundId)id + " has no body");
+                    Assert.Less(Mathf.Abs(wave[wave.Length - 1]), 0.01f, (SoundId)id + " would click at the end");
+                }
+            }
+        }
+
+        [UnityTest]
+        public IEnumerator Sound_FollowsWhatThePlayerDoes()
+        {
+            yield return new WaitForSeconds(0.3f);
+            Sfx.ResetCounts();
+
+            // Every shot is heard, and every casing lands.
+            int shots0 = weapon.ShotsFired;
+            PlayerInputState s = player.input;
+            s.fire = true;
+            player.input = s;
+            yield return new WaitForSeconds(0.4f);
+            s.fire = false;
+            player.input = s;
+            yield return null;
+            int shots = weapon.ShotsFired - shots0;
+            Assert.Greater(shots, 2);
+            Assert.AreEqual(shots, Sfx.PlayCount(SoundId.GunShot));
+            Assert.AreEqual(shots, Sfx.PlayCount(SoundId.ShellCasing));
+
+            // Sprinting puts feet down more often than walking.
+            Sfx.ResetCounts();
+            s.move = new Vector2(0f, 1f);
+            player.input = s;
+            yield return new WaitForSeconds(1.5f);
+            int walking = Sfx.PlayCount(SoundId.Footstep);
+            Assert.Greater(walking, 1, "walking should make footsteps");
+            player.Teleport(new Vector3(0f, 0.05f, -26f), 0f);
+            Sfx.ResetCounts();
+            s.sprint = true;
+            player.input = s;
+            yield return new WaitForSeconds(1.5f);
+            Assert.Greater(Sfx.PlayCount(SoundId.Footstep), walking, "sprinting should step faster than walking");
+            s.sprint = false;
+            s.move = Vector2.zero;
+            player.input = s;
+
+            // A reload is heard as its parts: magazine out, magazine in.
+            Sfx.ResetCounts();
+            yield return Tap(k => { k.reloadPressed = true; return k; });
+            float t0 = Time.time;
+            while (weapon.IsReloading && Time.time - t0 < 3f) yield return null;
+            Assert.AreEqual(1, Sfx.PlayCount(SoundId.MagOut));
+            Assert.AreEqual(1, Sfx.PlayCount(SoundId.MagIn));
+            Assert.AreEqual(0, Sfx.PlayCount(SoundId.BoltBack), "the bolt is only worked after running dry");
+        }
+
+        [UnityTest]
+        public IEnumerator Sound_BendsThroughOpenings_AndIsMuffledByWalls()
+        {
+            yield return null;
+
+            // Clear line of sight: nothing in the way.
+            SoundPath clear = Sfx.Evaluate(new Vector3(0f, 1.5f, -20f), new Vector3(0f, 1.5f, -26f));
+            Assert.AreEqual(SoundPathKind.Direct, clear.kind);
+            Assert.AreEqual(0f, clear.lossDb, 0.01f);
+
+            // Behind a solid wall next to an open doorway: the sound comes round through the door.
+            Vector3 ear = new Vector3(3f, 1.5f, -10f), source = new Vector3(3f, 1.5f, -6f);
+            SoundPath viaDoor = Sfx.Evaluate(source, ear);
+            Assert.AreEqual(SoundPathKind.Portal, viaDoor.kind, "sound should find its way round through an opening");
+            Assert.Less(viaDoor.apparentPosition.x, ear.x - 0.5f, "and be heard from the doorway's side, not through the wall");
+            Assert.Greater(viaDoor.lossDb, 3f);
+            Assert.Less(viaDoor.cutoffHz, 12000f, "a sound that has bent round a corner loses its top end");
+
+            // Board the door up: whichever way it now comes, it is quieter.
+            Barricade door = GameObject.Find("Barricade_Door").GetComponent<Barricade>();
+            door.BuildAll();
+            yield return null;
+            Physics.SyncTransforms();
+            SoundPath boarded = Sfx.Evaluate(source, ear);
+            Assert.Greater(boarded.lossDb, viaDoor.lossDb + 1.5f, "a barricade in the doorway should muffle what comes through");
+
+            // Through a soft wall: muffled. Through a hole in it: clean.
+            SoftWall wall = GameObject.Find("SoftWall").GetComponent<SoftWall>();
+            Vector3 softEar = new Vector3(-3.3f, 1.5f, -10f), softSource = new Vector3(-3.3f, 1.5f, -6f);
+            SoundPath throughSheet = Sfx.Evaluate(softSource, softEar);
+            Assert.AreEqual(SoundPathKind.Absorbed, throughSheet.kind);
+            Assert.LessOrEqual(throughSheet.cutoffHz, 2500f);
+            Assert.Greater(throughSheet.lossDb, 6f);
+            wall.Punch(new Vector3(-3.3f, 1.5f, -8f), Vector3.forward);
+            SoundPath throughHole = Sfx.Evaluate(softSource, softEar);
+            Assert.AreEqual(SoundPathKind.Direct, throughHole.kind, "a hole in a soft wall should let sound straight through");
         }
 
         [UnityTest]

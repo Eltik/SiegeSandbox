@@ -10,7 +10,8 @@ namespace SiegeSandbox
     /// </summary>
     public class HolePanel : MonoBehaviour
     {
-        public const float PixelsPerMetre = 128f;
+        /// <summary>Texture resolution. Higher keeps small bullet holes crisp.</summary>
+        public float PixelsPerMetre { get; private set; }
 
         public Vector2 Size { get; private set; }
         /// <summary>How many texels are still solid.</summary>
@@ -25,18 +26,19 @@ namespace SiegeSandbox
 
         static Mesh frontQuad, backQuad;
 
-        public static HolePanel Create(Transform parent, Vector2 size, float thickness, Material template)
+        public static HolePanel Create(Transform parent, Vector2 size, float thickness, Material template, float pixelsPerMetre)
         {
             GameObject go = new GameObject("Panel");
             go.transform.SetParent(parent, false);
             HolePanel panel = go.AddComponent<HolePanel>();
-            panel.Build(size, thickness, template);
+            panel.Build(size, thickness, template, pixelsPerMetre);
             return panel;
         }
 
-        void Build(Vector2 size, float thickness, Material template)
+        void Build(Vector2 size, float thickness, Material template, float pixelsPerMetre)
         {
             Size = size;
+            PixelsPerMetre = pixelsPerMetre;
             width = Mathf.Max(8, Mathf.RoundToInt(size.x * PixelsPerMetre));
             height = Mathf.Max(8, Mathf.RoundToInt(size.y * PixelsPerMetre));
             pixels = new Color32[width * height]; // starts fully open (alpha 0)
@@ -130,6 +132,53 @@ namespace SiegeSandbox
                     int i = y * width + x;
                     if (pixels[i].a == 0) SolidPixels++;
                     pixels[i] = new Color32(Shade(color.r, shade), Shade(color.g, shade), Shade(color.b, shade), 255);
+                }
+            }
+            dirty = true;
+        }
+
+        /// <summary>Paint a solid rectangle (metres: x from the centre line, y above the base).</summary>
+        public void FillRect(float xMin, float xMax, float yMin, float yMax, Color32 color)
+        {
+            int x0 = Mathf.Clamp(Mathf.RoundToInt((xMin / Size.x + 0.5f) * width), 0, width);
+            int x1 = Mathf.Clamp(Mathf.RoundToInt((xMax / Size.x + 0.5f) * width), 0, width);
+            int y0 = Mathf.Clamp(Mathf.RoundToInt(yMin * PixelsPerMetre), 0, height);
+            int y1 = Mathf.Clamp(Mathf.RoundToInt(yMax * PixelsPerMetre), 0, height);
+            for (int y = y0; y < y1; y++)
+            {
+                for (int x = x0; x < x1; x++)
+                {
+                    int i = y * width + x;
+                    if (pixels[i].a == 0) SolidPixels++;
+                    pixels[i] = new Color32(color.r, color.g, color.b, 255);
+                }
+            }
+            dirty = true;
+        }
+
+        /// <summary>
+        /// Paint a straight stroke over whatever is already solid (it never fills holes), limited
+        /// to the rows between yMin and yMax. Used for the cross sprayed on a barricade.
+        /// </summary>
+        public void StrokeOverSolid(Vector2 from, Vector2 to, float strokeWidth, Color32 color, float yMin, float yMax)
+        {
+            int y0 = Mathf.Clamp(Mathf.RoundToInt(yMin * PixelsPerMetre), 0, height);
+            int y1 = Mathf.Clamp(Mathf.RoundToInt(yMax * PixelsPerMetre), 0, height);
+            Vector2 a = new Vector2((from.x / Size.x + 0.5f) * width, from.y * PixelsPerMetre);
+            Vector2 b = new Vector2((to.x / Size.x + 0.5f) * width, to.y * PixelsPerMetre);
+            Vector2 ab = b - a;
+            float len2 = Mathf.Max(0.0001f, ab.sqrMagnitude);
+            float half = strokeWidth * PixelsPerMetre * 0.5f;
+            for (int y = y0; y < y1; y++)
+            {
+                for (int x = 0; x < width; x++)
+                {
+                    int i = y * width + x;
+                    if (pixels[i].a == 0) continue;
+                    Vector2 p = new Vector2(x + 0.5f, y + 0.5f);
+                    float t = Mathf.Clamp01(Vector2.Dot(p - a, ab) / len2);
+                    if ((p - (a + ab * t)).sqrMagnitude > half * half) continue;
+                    pixels[i] = new Color32(color.r, color.g, color.b, 255);
                 }
             }
             dirty = true;

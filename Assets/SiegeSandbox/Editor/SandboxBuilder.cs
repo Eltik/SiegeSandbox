@@ -344,8 +344,17 @@ namespace SiegeSandbox.EditorTools
 
             // Destructible pieces: a soft wall, a boarded-up window, and a doorway you can board up yourself.
             MakeSoftWall(level, "SoftWall", new Vector3(-3f, 0f, DividerZ), new Vector2(4f, 3f));
-            MakeBarricade(level, "Barricade_Window", new Vector3(-8f, 1.0f, DividerZ), new Vector2(3.2f, 0.9f), true);
-            MakeBarricade(level, "Barricade_Door", new Vector3(0f, 0f, DividerZ), new Vector2(1.4f, 2.2f), false);
+            MakeBarricade(level, "Barricade_Window", new Vector3(-8f, 1.0f, DividerZ), new Vector2(3.2f, 0.9f), 0f, true);
+            MakeBarricade(level, "Barricade_Door", new Vector3(0f, 0f, DividerZ), new Vector2(1.4f, 2.2f), 0.2f, false);
+
+            // Places sound can bend round or over. (Doorways, windows and holes add their own.)
+            Transform portals = new GameObject("SoundPortals").transform;
+            portals.SetParent(level, false);
+            for (int i = -2; i <= 2; i++) MakePortal(portals, "OverDivider", new Vector3(i * 6f, 3.9f, DividerZ), 2f);
+            MakePortal(portals, "CrawlTunnel", new Vector3(8f, 0.4f, -7f), 2f);
+            MakePortal(portals, "LeanWall_Right", new Vector3(-5.2f, 1.5f, -18f), 0f);
+            MakePortal(portals, "LeanWall_Left", new Vector3(-10.8f, 1.5f, -18f), 0f);
+            MakePortal(portals, "LeanWall_Over", new Vector3(-8f, 3.4f, -18f), 1f);
             DividerSegment(divider, "Solid_D", 10f, 15f, 0f, 3.5f);
 
             // The range beyond the divider.
@@ -384,7 +393,15 @@ namespace SiegeSandbox.EditorTools
             MakePreview(go.transform, size, wall.thickness, matSoftWall);
         }
 
-        static void MakeBarricade(Transform parent, string name, Vector3 bottomCenter, Vector2 size, bool built)
+        static void MakePortal(Transform parent, string name, Vector3 position, float extraLossDb)
+        {
+            GameObject go = new GameObject(name);
+            go.transform.SetParent(parent, false);
+            go.transform.position = position;
+            go.AddComponent<SoundPortal>().extraLossDb = extraLossDb;
+        }
+
+        static void MakeBarricade(Transform parent, string name, Vector3 bottomCenter, Vector2 size, float bottomGap, bool built)
         {
             GameObject go = new GameObject(name);
             go.transform.SetParent(parent, false);
@@ -392,6 +409,7 @@ namespace SiegeSandbox.EditorTools
             Barricade b = go.AddComponent<Barricade>();
             b.size = size;
             b.builtAtStart = built;
+            b.bottomGap = bottomGap;
             b.panelMaterial = matSheet;
             b.plankMaterial = matWood;
             if (built) MakePreview(go.transform, size, b.thickness, matWood);
@@ -573,22 +591,31 @@ namespace SiegeSandbox.EditorTools
             dbg.transform.position = root.transform.TransformPoint(new Vector3(1.6f, 1.5f, -3.4f));
             dbg.transform.LookAt(root.transform.position + Vector3.up * 0.8f);
 
-            // Work arms for barricading: one steadies the plank, the other swings a hammer.
+            // Work arms for barricading: one steadies the barricade, the other swings a hammer or levers a crowbar.
             Transform hands = new GameObject("Hands").transform;
             hands.SetParent(camGo.transform, false);
             Part("HoldArm", hands, new Vector3(-0.21f, -0.19f, 0.40f), new Vector3(0.06f, 0.06f, 0.42f), matSkin, new Vector3(-22f, 16f, 0f));
-            Transform hammerArm = new GameObject("HammerArm").transform;
-            hammerArm.SetParent(hands, false);
-            hammerArm.localPosition = new Vector3(0.24f, -0.27f, 0.22f);
-            Part("Forearm", hammerArm, new Vector3(0f, 0f, 0.19f), new Vector3(0.06f, 0.06f, 0.38f), matSkin, Vector3.zero);
-            Part("HammerHandle", hammerArm, new Vector3(0f, 0.10f, 0.37f), new Vector3(0.022f, 0.22f, 0.022f), matWood, Vector3.zero);
-            Part("HammerHead", hammerArm, new Vector3(0f, 0.21f, 0.39f), new Vector3(0.04f, 0.045f, 0.10f), matGun, Vector3.zero);
+            Transform toolArm = new GameObject("ToolArm").transform;
+            toolArm.SetParent(hands, false);
+            toolArm.localPosition = new Vector3(0.24f, -0.27f, 0.22f);
+            Part("Forearm", toolArm, new Vector3(0f, 0f, 0.19f), new Vector3(0.06f, 0.06f, 0.38f), matSkin, Vector3.zero);
+            Transform hammer = new GameObject("Hammer").transform;
+            hammer.SetParent(toolArm, false);
+            Part("Handle", hammer, new Vector3(0f, 0.10f, 0.37f), new Vector3(0.022f, 0.22f, 0.022f), matWood, Vector3.zero);
+            Part("Head", hammer, new Vector3(0f, 0.21f, 0.39f), new Vector3(0.04f, 0.045f, 0.10f), matGun, Vector3.zero);
+            Transform crowbar = new GameObject("Crowbar").transform;
+            crowbar.SetParent(toolArm, false);
+            Part("Bar", crowbar, new Vector3(0f, 0.02f, 0.52f), new Vector3(0.022f, 0.022f, 0.50f), matGun, Vector3.zero);
+            Part("Claw", crowbar, new Vector3(0f, 0.045f, 0.78f), new Vector3(0.03f, 0.07f, 0.022f), matGun, new Vector3(25f, 0f, 0f));
+            crowbar.gameObject.SetActive(false);
             SetLayerRecursive(hands.gameObject, PlayerController.PlayerLayer);
 
             Interactor interactor = root.AddComponent<Interactor>();
             interactor.player = pc;
             interactor.hands = hands;
-            interactor.hammerArm = hammerArm;
+            interactor.toolArm = toolArm;
+            interactor.hammer = hammer.gameObject;
+            interactor.crowbar = crowbar.gameObject;
 
             Hud hud = new GameObject("HUD").AddComponent<Hud>();
             hud.player = pc;

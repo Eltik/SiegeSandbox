@@ -29,5 +29,7 @@ namespace SiegeSandbox
     public interface IBulletSurface
     {
         BulletSurfaceResult OnBullet(Collider collider, Vector3 point, Vector3 direction);
+        /// <summary>Is there already a hole in this collider's sheet at this point? (Sound asks this too.)</summary>
+        bool IsOpenAt(Collider collider, Vector3 point);
     }
 }
