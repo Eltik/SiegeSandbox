@@ -133,7 +133,7 @@ namespace SiegeSandbox
                     ? "Heard: " + Sfx.LastWorldSound + "  (" + Sfx.Describe(Sfx.LastPath) + ")"
                     : "Heard: -";
                 string mouse = !player.useDeviceInput ? "Mouse: scripted input"
-                    : "Mouse: " + (player.HasMouse ? "captured" : "free (click the view)") +
+                    : "Mouse: " + (player.HasMouse ? "captured (" + MouseCapture.Current.ToString().ToLower() + ")" : "free (click the view)") +
                       "    moving " + player.RawMouseDelta.x.ToString("0") + ", " + player.RawMouseDelta.y.ToString("0");
                 Shadowed(new Rect(w - 900f * unit - pad, pad, 900f * unit, line * 2.6f), heard + "\n" + mouse, topRight);
             }
