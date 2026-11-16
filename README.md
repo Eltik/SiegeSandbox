@@ -17,7 +17,7 @@ Open `Assets/SiegeSandbox/Scenes/Sandbox.unity` and press Play.
 | C | Crouch (toggle) |
 | Ctrl | Prone (toggle) |
 | Q / E | Lean left / right (tap to lean, tap again to straighten; `toggleLean` off = hold) |
-| F | Build or remove a barricade at a doorway or window |
+| F (hold) | Nail up or pull down a barricade at a doorway or window |
 | Right mouse | Aim down sights (hold) |
 | Left mouse | Fire |
 | R | Reload (animated; longer when the magazine is empty) |
@@ -43,8 +43,8 @@ Open `Assets/SiegeSandbox/Scenes/Sandbox.unity` and press Play.
 - **Jumping costs accuracy.** Space jumps about a metre, with reduced air control and a
   much wider spread cone until you land.
 - **Melee is physical.** V swings the weapon at whatever is within about 1.9 m: it drops a
-  dummy (which falls the way it was hit), smashes a third of a barricade per strike, and
-  knocks a hole in a soft wall. It interrupts a reload.
+  dummy (which falls the way it was hit), tears a ragged half-metre hole in a soft wall, and
+  knocks chunks out of a barricade. It interrupts a reload.
 - **Damage depends on where you hit.** One bullet to the head is always lethal, even after
   passing through a wall. The torso takes full damage (34) and arms and legs take three
   quarters (`DamageZone.multiplier`). The HUD names the part you hit.
@@ -53,16 +53,22 @@ Open `Assets/SiegeSandbox/Scenes/Sandbox.unity` and press Play.
   still kill at any range. Bullets also drop with gravity.
 - **Bullets penetrate soft cover.** Anything with a `Surface` component set to Wood or
   SoftWall lets bullets through at reduced damage (up to four layers); everything else stops
-  them. Soft walls are thin panels over studs: each bullet knocks a panel out, so you can
-  open sight lines, but the studs stop you walking through.
-- **Barricades.** Wooden planks with slits between them. Two bullets break a plank, three
-  melee strikes clear the whole thing, and F builds or removes one (1.5 s / 1 s, weapon
-  lowered). The window starts boarded up; the doorway starts open.
+  them.
+- **Holes are real holes.** Soft walls and barricades are `HolePanel` sheets: holes are
+  painted into the sheet's own texture and cut out by an alpha-clipped material. A bullet
+  leaves a ragged hole a few centimetres across and a melee strike a large irregular one. You
+  can see through them, and a later bullet through an existing hole (or a slit between
+  planks) loses no damage. Soft walls keep their studs, so you cannot walk through.
+- **Barricades.** Hold F at an open doorway or window and the planks are carried up and
+  hammered on one at a time, bottom to top; let go or walk away and the half-built barricade
+  falls apart. Hold F at a standing one to pull the planks off. Bullets splinter holes in it,
+  two melee strikes knock chunks out and the third brings it down, and it also collapses once
+  half the wood has been shot away. The window starts boarded up; the doorway starts open.
 - **Climbing over cover.** Space always jumps. If the jump carries you into cover up to
   1.3 m high while you hold forward, you climb over it, or through a window once its
   barricade is gone. You stay crouched over open cover and tuck low through a window.
-- **Leaning is subtle on screen, real on the hitbox.** The upper body tilts 14 degrees and
-  slides 10 cm; the view only rolls half of that (`cameraRollScale`).
+- **The lean you see is the lean you get.** The view, the gun and the hitbox all hang off the
+  same pivot: 9 degrees of tilt and a 14 cm shoulder slide.
 - **Leaning changes the shot.** Recoil follows the tilted gun, so a spray climbs toward the
   side you lean to. Hip fire is slightly worse while leaned and clearly worse while the lean
   is still moving. Sprinting, jumping and vaulting straighten you up.
@@ -81,7 +87,7 @@ platform and a ramp.
 ## Layout
 
 - `Assets/SiegeSandbox/Runtime` - gameplay scripts (`PlayerController`, `Weapon`,
-  `Projectile`, `Target`, `DamageZone`, `Surface`, `Breakable`, `Barricade`, `SoftWall`,
+  `Projectile`, `Target`, `DamageZone`, `Surface`, `HolePanel`, `Barricade`, `SoftWall`,
   `Interactor`, `Hud`, `HitboxDebugCamera`).
 - `Assets/SiegeSandbox/Editor` - `SandboxBuilder` generates the scene, materials and meshes
   from code (**Siege Sandbox > Build Sandbox Scene**). Edit the builder rather than the

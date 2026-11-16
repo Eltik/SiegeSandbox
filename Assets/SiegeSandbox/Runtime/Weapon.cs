@@ -382,7 +382,7 @@ namespace SiegeSandbox
             SoftWall softWall = struck.GetComponentInParent<SoftWall>();
             if (softWall != null)
             {
-                softWall.Punch(point, dir, 0.3f);
+                softWall.Punch(point, dir, 0.26f);
                 MeleeHits++;
                 return;
             }
@@ -459,7 +459,7 @@ namespace SiegeSandbox
                 pos += new Vector3(-0.045f, -0.035f, -0.03f) * reloadPose;
                 pos += new Vector3(0f, 0.012f, 0f) * seatBump;
                 pos += new Vector3(-0.10f, 0.03f, 0.20f) * strike;
-                pos += new Vector3(0f, -0.14f, -0.03f) * busyBlend; // hands are busy: gun drops out of view
+                pos += new Vector3(0.04f, -0.34f, -0.05f) * busyBlend; // hands are busy: gun drops out of view
                 model.localPosition = pos;
 
                 model.localRotation = Quaternion.Euler(

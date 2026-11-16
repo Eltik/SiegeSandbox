@@ -25,7 +25,7 @@ namespace SiegeSandbox.EditorTools
         static bool meshAssetCreated;
         static Material matFloor, matWall, matCover, matGun, matSkin, matTarget, matTargetHead, matTargetLimb;
         static Material matTracer, matImpact, matFlash, matHbLegs, matHbTorso, matHbHead;
-        static Material matWood, matSoftWall;
+        static Material matWood, matSoftWall, matSheet;
 
         [MenuItem("Siege Sandbox/Build Sandbox Scene")]
         public static void Build()
@@ -58,6 +58,7 @@ namespace SiegeSandbox.EditorTools
             matHbHead = Mat("HitboxHead", new Color(0.90f, 0.25f, 0.25f), null, false);
             matWood = Mat("Wood", new Color(0.55f, 0.38f, 0.22f), null, false);
             matSoftWall = Mat("SoftWall", new Color(0.86f, 0.78f, 0.62f), null, false);
+            matSheet = CutoutMat("HoleSheet");
 
             AssetDatabase.DeleteAsset(MeshPath);
             meshCache = new Dictionary<string, Mesh>();
@@ -158,6 +159,24 @@ namespace SiegeSandbox.EditorTools
                 if (m.HasProperty("_BaseMap")) m.SetTexture("_BaseMap", tex);
             }
             if (m.HasProperty("_Smoothness")) m.SetFloat("_Smoothness", 0.08f);
+            EditorUtility.SetDirty(m);
+            return m;
+        }
+
+        /// <summary>
+        /// Two-sided, alpha-clipped material for sheets that get holes punched in them. Each sheet
+        /// makes its own copy at runtime with its own texture; keeping this one as an asset makes
+        /// sure the alpha-clip shader variant is included in builds.
+        /// </summary>
+        static Material CutoutMat(string name)
+        {
+            Material m = Mat(name, Color.white, null, false);
+            m.SetFloat("_AlphaClip", 1f);
+            m.SetFloat("_Cutoff", 0.5f);
+            m.SetFloat("_Cull", (float)CullMode.Off);
+            m.EnableKeyword("_ALPHATEST_ON");
+            m.SetOverrideTag("RenderType", "TransparentCutout");
+            m.renderQueue = (int)RenderQueue.AlphaTest;
             EditorUtility.SetDirty(m);
             return m;
         }
@@ -359,8 +378,9 @@ namespace SiegeSandbox.EditorTools
             go.transform.position = bottomCenter;
             SoftWall wall = go.AddComponent<SoftWall>();
             wall.size = size;
-            wall.panelMaterial = matSoftWall;
+            wall.panelMaterial = matSheet;
             wall.studMaterial = matWood;
+            wall.debrisMaterial = matSoftWall;
             MakePreview(go.transform, size, wall.thickness, matSoftWall);
         }
 
@@ -372,6 +392,7 @@ namespace SiegeSandbox.EditorTools
             Barricade b = go.AddComponent<Barricade>();
             b.size = size;
             b.builtAtStart = built;
+            b.panelMaterial = matSheet;
             b.plankMaterial = matWood;
             if (built) MakePreview(go.transform, size, b.thickness, matWood);
         }
@@ -552,8 +573,22 @@ namespace SiegeSandbox.EditorTools
             dbg.transform.position = root.transform.TransformPoint(new Vector3(1.6f, 1.5f, -3.4f));
             dbg.transform.LookAt(root.transform.position + Vector3.up * 0.8f);
 
+            // Work arms for barricading: one steadies the plank, the other swings a hammer.
+            Transform hands = new GameObject("Hands").transform;
+            hands.SetParent(camGo.transform, false);
+            Part("HoldArm", hands, new Vector3(-0.21f, -0.19f, 0.40f), new Vector3(0.06f, 0.06f, 0.42f), matSkin, new Vector3(-22f, 16f, 0f));
+            Transform hammerArm = new GameObject("HammerArm").transform;
+            hammerArm.SetParent(hands, false);
+            hammerArm.localPosition = new Vector3(0.24f, -0.27f, 0.22f);
+            Part("Forearm", hammerArm, new Vector3(0f, 0f, 0.19f), new Vector3(0.06f, 0.06f, 0.38f), matSkin, Vector3.zero);
+            Part("HammerHandle", hammerArm, new Vector3(0f, 0.10f, 0.37f), new Vector3(0.022f, 0.22f, 0.022f), matWood, Vector3.zero);
+            Part("HammerHead", hammerArm, new Vector3(0f, 0.21f, 0.39f), new Vector3(0.04f, 0.045f, 0.10f), matGun, Vector3.zero);
+            SetLayerRecursive(hands.gameObject, PlayerController.PlayerLayer);
+
             Interactor interactor = root.AddComponent<Interactor>();
             interactor.player = pc;
+            interactor.hands = hands;
+            interactor.hammerArm = hammerArm;
 
             Hud hud = new GameObject("HUD").AddComponent<Hud>();
             hud.player = pc;

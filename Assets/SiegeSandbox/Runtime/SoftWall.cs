@@ -3,65 +3,50 @@ using UnityEngine;
 namespace SiegeSandbox
 {
     /// <summary>
-    /// A destructible "soft" wall: thin panels over wooden studs. Bullets punch a panel out
-    /// and keep going at reduced damage; a melee strike knocks a wider hole. The studs stay,
-    /// so you can see and shoot through the wall but not walk through it.
+    /// A destructible "soft" wall: a thin sheet over wooden studs. A bullet leaves a small ragged
+    /// hole and carries on at reduced damage; a second bullet through the same hole is untouched.
+    /// A melee strike tears out a much larger irregular hole. The studs stay, so you can see and
+    /// shoot through the wall but not walk through it.
     /// The object sits at the bottom centre of the wall; it spans local X and rises up Y.
     /// </summary>
-    public class SoftWall : MonoBehaviour
+    public class SoftWall : MonoBehaviour, IBulletSurface
     {
         public Vector2 size = new Vector2(4f, 3f);
         public float thickness = 0.12f;
-        public float panelSize = 0.25f;
         public float studSpacing = 0.5f;
-        public Material panelMaterial;
+        public Color32 color = new Color32(219, 199, 158, 255);
+        public Material panelMaterial;   // alpha-clipped sheet material
         public Material studMaterial;
+        public Material debrisMaterial;
 
-        Breakable[] panels;
+        public int BulletHoles { get; private set; }
+        public int MeleeHoles { get; private set; }
+        /// <summary>Fraction of the sheet that has been shot or punched away.</summary>
+        public float OpenFraction { get { return panel == null ? 0f : 1f - panel.SolidPixels / (float)panel.PixelCount; } }
 
-        public int PanelsLeft
-        {
-            get
-            {
-                int n = 0;
-                if (panels == null) return 0;
-                for (int i = 0; i < panels.Length; i++)
-                    if (panels[i] != null && !panels[i].IsBroken) n++;
-                return n;
-            }
-        }
-
-        public int PanelCount { get { return panels != null ? panels.Length : 0; } }
+        HolePanel panel;
+        Collider panelCollider;
 
         void Awake()
         {
             Transform preview = transform.Find("Preview");
             if (preview != null) Destroy(preview.gameObject);
 
-            int cols = Mathf.Max(1, Mathf.RoundToInt(size.x / panelSize));
-            int rows = Mathf.Max(1, Mathf.RoundToInt(size.y / panelSize));
-            float w = size.x / cols, h = size.y / rows;
-            panels = new Breakable[cols * rows];
+            panel = HolePanel.Create(transform, size, thickness, panelMaterial);
+            panel.FillBand(0f, size.y, color, 0.06f, Random.value * 50f);
 
-            Transform panelRoot = new GameObject("Panels").transform;
-            panelRoot.SetParent(transform, false);
-            for (int y = 0; y < rows; y++)
-            {
-                for (int x = 0; x < cols; x++)
-                {
-                    Vector3 pos = new Vector3(-size.x * 0.5f + w * (x + 0.5f), h * (y + 0.5f), 0f);
-                    GameObject panel = Prims.Cube("Panel", panelRoot, pos, new Vector3(w, h, thickness), panelMaterial, true);
-                    Surface s = panel.AddComponent<Surface>();
-                    s.kind = SurfaceKind.SoftWall;
-                    s.damageKept = 0.8f;
-                    Breakable b = panel.AddComponent<Breakable>();
-                    b.health = 1f;
-                    b.debrisCount = 1;
-                    panels[y * cols + x] = b;
-                }
-            }
+            // One collider for the whole sheet. Bullets ask the sheet whether they met wall or hole.
+            GameObject col = new GameObject("PanelCollider");
+            col.transform.SetParent(transform, false);
+            col.transform.localPosition = new Vector3(0f, size.y * 0.5f, 0f);
+            BoxCollider box = col.AddComponent<BoxCollider>();
+            box.size = new Vector3(size.x, size.y, thickness);
+            Surface sheet = col.AddComponent<Surface>();
+            sheet.kind = SurfaceKind.SoftWall;
+            sheet.damageKept = 0.8f;
+            panelCollider = box;
 
-            // Studs: too close together to squeeze through, thin enough to shoot between.
+            // Studs inside the wall: too close together to squeeze through, thin enough to shoot between.
             Transform studRoot = new GameObject("Studs").transform;
             studRoot.SetParent(transform, false);
             int studs = Mathf.Max(1, Mathf.RoundToInt(size.x / studSpacing));
@@ -69,29 +54,35 @@ namespace SiegeSandbox
             {
                 float x = -size.x * 0.5f + size.x * i / studs;
                 GameObject stud = Prims.Cube("Stud", studRoot, new Vector3(x, size.y * 0.5f, 0f),
-                    new Vector3(0.05f, size.y, thickness * 0.8f), studMaterial, true);
+                    new Vector3(0.05f, size.y, thickness * 0.7f), studMaterial, true);
                 Surface s = stud.AddComponent<Surface>();
                 s.kind = SurfaceKind.Wood;
                 s.damageKept = 0.6f;
             }
         }
 
-        /// <summary>Knock out every panel within a radius of the hit (used by melee).</summary>
-        public int Punch(Vector3 point, Vector3 direction, float radius)
+        public bool IsOpenAt(Vector3 point)
         {
-            int broken = 0;
-            Vector3 local = transform.InverseTransformPoint(point);
-            for (int i = 0; i < panels.Length; i++)
-            {
-                Breakable p = panels[i];
-                if (p == null || p.IsBroken) continue;
-                Vector3 d = p.transform.localPosition - local;
-                d.z = 0f;
-                if (d.magnitude > radius) continue;
-                p.Break(direction);
-                broken++;
-            }
-            return broken;
+            return panel.IsOpenAt(point);
+        }
+
+        public BulletSurfaceResult OnBullet(Collider collider, Vector3 point, Vector3 direction)
+        {
+            if (collider != panelCollider) return BulletSurfaceResult.NotMine;
+            if (panel.IsOpenAt(point)) return BulletSurfaceResult.Open;
+
+            panel.PunchHole(point, Random.Range(0.028f, 0.04f), 0.45f, 0.55f);
+            BulletHoles++;
+            Prims.Debris(point, Vector3.one * 0.02f, direction, 1, debrisMaterial);
+            return BulletSurfaceResult.Punched;
+        }
+
+        /// <summary>A melee strike: tear out a large ragged hole around the point.</summary>
+        public void Punch(Vector3 point, Vector3 direction, float radius)
+        {
+            panel.PunchHole(point, radius, 0.5f, 0.6f);
+            MeleeHoles++;
+            Prims.Debris(point, Vector3.one * radius * 0.6f, direction, 7, debrisMaterial);
         }
     }
 }

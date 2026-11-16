@@ -139,7 +139,7 @@ namespace SiegeSandbox
                     "Q / E  lean left / right (toggle)\n" +
                     "Right mouse  aim down sights\n" +
                     "Left mouse  fire        R  reload\n" +
-                    "F  build / remove barricade\n" +
+                    "Hold F  build / remove barricade\n" +
                     "H  hitbox camera    Tab  hide help\n" +
                     "Esc  free the cursor";
                 Shadowed(new Rect(pad, pad, 520f * unit, line * 11.6f), help, label);

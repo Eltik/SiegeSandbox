@@ -331,17 +331,27 @@ namespace SiegeSandbox.Tests
         }
 
         [UnityTest]
-        public IEnumerator Bullets_PunchThroughSoftWalls_ButNotHardWalls()
+        public IEnumerator SoftWall_BulletsLeaveSmallHoles_AndHardWallsStopThem()
         {
             SoftWall wall = GameObject.Find("SoftWall").GetComponent<SoftWall>();
             Target behindSoft = GameObject.Find("Target_SoftWall").GetComponent<Target>();
-            int panels = wall.PanelsLeft;
-            Assert.Greater(panels, 100);
+            Vector3 muzzle = new Vector3(-3.3f, 0.9f, -10f);
+            Vector3 onWall = new Vector3(-3.3f, 0.9f, -8f);
+            Assert.IsFalse(wall.IsOpenAt(onWall));
+            Assert.AreEqual(0f, wall.OpenFraction, 0.0001f);
 
-            Shoot(new Vector3(-3.3f, 0.9f, -10f));
+            Shoot(muzzle);
             yield return new WaitForSeconds(0.3f);
-            Assert.AreEqual(panels - 1, wall.PanelsLeft, "the bullet should knock out exactly one panel");
-            Assert.AreEqual(100f - 34f * 0.8f, behindSoft.Health, 0.1f, "and still hit behind it at reduced damage");
+            Assert.AreEqual(1, wall.BulletHoles);
+            Assert.IsTrue(wall.IsOpenAt(onWall), "the bullet should leave a hole where it hit");
+            Assert.Less(wall.OpenFraction, 0.002f, "a bullet hole is a few centimetres across, not a missing panel");
+            Assert.AreEqual(100f - 34f * 0.8f, behindSoft.Health, 0.1f, "punching through costs the bullet some damage");
+
+            // A second bullet through the same hole touches nothing on the way.
+            Shoot(muzzle);
+            yield return new WaitForSeconds(0.3f);
+            Assert.AreEqual(1, wall.BulletHoles, "no new hole should be made");
+            Assert.AreEqual(100f - 34f * 0.8f - 34f, behindSoft.Health, 0.1f, "a bullet through an existing hole keeps full damage");
 
             GameObject go = new GameObject("BehindHardWall");
             go.transform.position = new Vector3(3f, 1f, -6f);
@@ -354,32 +364,58 @@ namespace SiegeSandbox.Tests
         }
 
         [UnityTest]
-        public IEnumerator Barricade_BreaksToBulletsAndMelee()
+        public IEnumerator SoftWall_MeleeTearsOutALargeRaggedHole()
+        {
+            SoftWall wall = GameObject.Find("SoftWall").GetComponent<SoftWall>();
+            player.Teleport(new Vector3(-2.2f, 0.05f, -9f), 0f);
+            yield return new WaitForSeconds(0.2f);
+            yield return Tap(k => { k.meleePressed = true; return k; });
+            yield return new WaitForSeconds(0.6f);
+
+            Assert.AreEqual(1, wall.MeleeHoles);
+            // About half a metre across on a 12 square metre wall: between 0.8% and 4% of it.
+            Assert.Greater(wall.OpenFraction, 0.008f, "a melee hole should be much bigger than a bullet hole");
+            Assert.Less(wall.OpenFraction, 0.04f, "but it is a hole, not a missing section of wall");
+            Assert.IsTrue(wall.IsOpenAt(new Vector3(-2.2f, 1.67f, -8f)));
+        }
+
+        [UnityTest]
+        public IEnumerator Barricade_SplintersToBullets_AndFallsToThreeStrikes()
         {
             Barricade window = GameObject.Find("Barricade_Window").GetComponent<Barricade>();
-            Assert.AreEqual(5, window.PlanksLeft);
+            Target behind = GameObject.Find("Target_Window").GetComponent<Target>();
+            Assert.IsTrue(window.IsComplete);
+            Assert.AreEqual(5, window.PlankCount);
 
-            // Two bullets into the same plank break it.
-            Shoot(new Vector3(-8f, 1.45f, -10f));
-            yield return new WaitForSeconds(0.2f);
-            Assert.AreEqual(5, window.PlanksLeft, "one bullet should only damage a plank");
-            Shoot(new Vector3(-8f, 1.45f, -10f));
-            yield return new WaitForSeconds(0.2f);
-            Assert.AreEqual(4, window.PlanksLeft);
+            // A bullet splinters a hole and carries on weaker; the next one through that hole does not.
+            Vector3 muzzle = new Vector3(-8f, 1.45f, -10f);
+            Shoot(muzzle);
+            yield return new WaitForSeconds(0.3f);
+            Assert.AreEqual(1, window.BulletHoles);
+            Assert.IsTrue(window.IsBuilt, "one bullet should not bring a barricade down");
+            Assert.AreEqual(100f - 34f * 0.75f, behind.Health, 0.1f);
+            Shoot(muzzle);
+            yield return new WaitForSeconds(0.3f);
+            Assert.AreEqual(1, window.BulletHoles);
+            Assert.AreEqual(100f - 34f * 0.75f - 34f, behind.Health, 0.1f);
 
-            // Melee finishes the job within three strikes.
+            // Melee: still standing after two strikes, gone after the third.
             player.Teleport(new Vector3(-8f, 0.05f, -9f), 0f);
             yield return new WaitForSeconds(0.2f);
-            for (int i = 0; i < 3 && window.IsBuilt; i++)
+            for (int i = 0; i < 2; i++)
             {
                 yield return Tap(k => { k.meleePressed = true; return k; });
                 yield return new WaitForSeconds(0.6f);
             }
-            Assert.IsFalse(window.IsBuilt, "three melee strikes should clear a barricade");
+            Assert.IsTrue(window.IsBuilt, "two strikes should leave it damaged but standing");
+            Assert.Greater(window.OpenFraction, 0.1f);
+            yield return Tap(k => { k.meleePressed = true; return k; });
+            yield return new WaitForSeconds(0.6f);
+            Assert.IsFalse(window.IsBuilt, "the third strike should bring it down");
         }
 
         [UnityTest]
-        public IEnumerator Interact_BuildsAndRemovesABarricade()
+        public IEnumerator Barricade_IsNailedUpPlankByPlank_WhileTheKeyIsHeld()
         {
             Barricade door = GameObject.Find("Barricade_Door").GetComponent<Barricade>();
             Interactor interactor = player.GetComponent<Interactor>();
@@ -389,25 +425,49 @@ namespace SiegeSandbox.Tests
             yield return new WaitForSeconds(0.2f);
             StringAssert.Contains("barricade", interactor.Prompt);
 
-            yield return Tap(k => { k.interactPressed = true; return k; });
-            Assert.IsTrue(interactor.IsBusy);
-            int shots = weapon.ShotsFired;
+            // Let go part-way: the half-built barricade falls apart.
             PlayerInputState s = player.input;
+            s.interactHeld = true;
+            player.input = s;
+            yield return new WaitForSeconds(0.7f);
+            Assert.IsTrue(interactor.IsBusy);
+            Assert.Greater(door.PlanksPlaced, 1, "planks should be going up one at a time");
+            Assert.Less(door.PlanksPlaced, door.PlankCount);
+            s.interactHeld = false;
+            player.input = s;
+            yield return new WaitForSeconds(0.2f);
+            Assert.IsFalse(door.IsBuilt, "an abandoned barricade should not hold");
+            Assert.IsFalse(interactor.IsBusy);
+
+            // Hold it all the way, and try to shoot while doing it.
+            int shots = weapon.ShotsFired;
+            s.interactHeld = true;
             s.fire = true;
             player.input = s;
-            yield return new WaitForSeconds(0.3f);
+            yield return new WaitForSeconds(1.0f);
+            Assert.IsTrue(interactor.IsBusy);
             s.fire = false;
             player.input = s;
             Assert.AreEqual(shots, weapon.ShotsFired, "you cannot shoot while building");
-
             yield return new WaitForSeconds(1.5f);
-            Assert.IsTrue(door.IsBuilt, "the doorway should now be boarded up");
-            Assert.AreEqual(12, door.PlanksLeft);
+            Assert.IsTrue(door.IsComplete, "the doorway should now be boarded up");
+            Assert.AreEqual(12, door.PlanksPlaced);
             Assert.IsFalse(interactor.IsBusy);
 
-            yield return Tap(k => { k.interactPressed = true; return k; });
-            yield return new WaitForSeconds(1.3f);
-            Assert.IsFalse(door.IsBuilt, "interacting again should take it down");
+            // Still holding the key must not start tearing it down again.
+            yield return new WaitForSeconds(0.4f);
+            Assert.IsTrue(door.IsComplete);
+
+            // Release, then hold again to pull the planks off.
+            s.interactHeld = false;
+            player.input = s;
+            yield return null;
+            s.interactHeld = true;
+            player.input = s;
+            yield return new WaitForSeconds(1.7f);
+            s.interactHeld = false;
+            player.input = s;
+            Assert.IsFalse(door.IsBuilt, "holding the key at a barricade should take it down");
         }
 
         [UnityTest]
@@ -534,7 +594,7 @@ namespace SiegeSandbox.Tests
             Assert.Less(player.transform.position.z, -8.4f);
 
             // ...but an open one can.
-            window.Remove();
+            window.Clear(false, Vector3.zero);
             yield return null;
             yield return null;
             player.Teleport(new Vector3(-8f, 0.05f, -8.9f), 0f);

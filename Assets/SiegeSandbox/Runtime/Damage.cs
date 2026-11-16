@@ -17,4 +17,17 @@ namespace SiegeSandbox
     {
         void TakeDamage(DamageInfo info);
     }
+
+    public enum BulletSurfaceResult
+    {
+        NotMine,    // this collider is not part of the holed sheet (a stud, say): treat it normally
+        Punched,    // the bullet made a new hole and carries on at reduced damage
+        Open        // there was already a hole here: the bullet passes untouched
+    }
+
+    /// <summary>A sheet that keeps track of its own holes: soft walls and barricades.</summary>
+    public interface IBulletSurface
+    {
+        BulletSurfaceResult OnBullet(Collider collider, Vector3 point, Vector3 direction);
+    }
 }

@@ -111,6 +111,12 @@ namespace SiegeSandbox
         {
             Collider col = hit.collider;
 
+            // Soft walls and barricades keep their own holes. Through an existing hole the bullet is untouched.
+            BulletSurfaceResult sheet = BulletSurfaceResult.NotMine;
+            IBulletSurface holed = col.GetComponentInParent<IBulletSurface>();
+            if (holed != null) sheet = holed.OnBullet(col, hit.point, dir);
+            if (sheet == BulletSurfaceResult.Open) return false;
+
             IDamageable target = col.GetComponentInParent<IDamageable>();
             if (target != null)
             {
@@ -132,12 +138,12 @@ namespace SiegeSandbox
                 damage *= surface.damageKept;
                 if (damage >= MinDamage)
                 {
-                    if (target == null) Mark(hit, 0.04f); // a bullet hole in solid wood
+                    if (target == null && sheet != BulletSurfaceResult.Punched) Mark(hit, 0.04f); // a bullet hole in solid wood
                     return false;
                 }
             }
 
-            if (target == null) Mark(hit, 0.06f);
+            if (target == null && sheet != BulletSurfaceResult.Punched) Mark(hit, 0.06f);
             Destroy(gameObject);
             return true;
         }

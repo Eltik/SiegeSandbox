@@ -20,7 +20,7 @@ namespace SiegeSandbox
         public bool reloadPressed;
         public bool jumpPressed;
         public bool meleePressed;
-        public bool interactPressed;
+        public bool interactHeld;   // barricading needs the key held down
     }
 
     /// <summary>
@@ -89,9 +89,9 @@ namespace SiegeSandbox
         public float stanceSpeed = 3.2f;
 
         [Header("Lean")]
-        public float leanAngle = 14f;          // how far the upper body (and its hitbox) tilts
-        public float cameraRollScale = 0.5f;   // the view only rolls by this fraction of the body tilt
-        public float leanShift = 0.10f;        // the shoulders slide sideways as well as tilting
+        // One angle for everything: the view, the gun and the hitbox all tilt together.
+        public float leanAngle = 9f;
+        public float leanShift = 0.14f;        // the shoulders slide sideways as well as tilting
         public float leanSmoothTime = 0.13f;
 
         public Stance Stance { get; private set; }
@@ -108,7 +108,7 @@ namespace SiegeSandbox
         /// <summary>The weapon cannot be used: mid-vault or mid-action.</summary>
         public bool HandsBusy { get { return IsBusy || IsVaulting; } }
         /// <summary>How far the view is rolled by the lean, in degrees (positive = right).</summary>
-        public float LeanRollDegrees { get { return Lean * CurrentLeanAngle() * cameraRollScale; } }
+        public float LeanRollDegrees { get { return Lean * CurrentLeanAngle(); } }
         /// <summary>How fast the lean is changing, in lean units per second. Shooting mid-lean is less accurate.</summary>
         public float LeanChangeRate { get; private set; }
         /// <summary>Walk/sprint bob in metres (x = sideways, y = up). The weapon reads this too.</summary>
@@ -211,7 +211,7 @@ namespace SiegeSandbox
                 s.reloadPressed = kb.rKey.wasPressedThisFrame;
                 s.jumpPressed = kb.spaceKey.wasPressedThisFrame;
                 s.meleePressed = kb.vKey.wasPressedThisFrame;
-                s.interactPressed = kb.fKey.wasPressedThisFrame;
+                s.interactHeld = kb.fKey.isPressed;
 
                 if (toggleLean)
                 {
@@ -313,12 +313,8 @@ namespace SiegeSandbox
 
             Pitch = Mathf.Clamp(Pitch, -80f, 85f);
             transform.rotation = Quaternion.Euler(0f, Yaw, 0f);
-            if (cameraPivot != null)
-            {
-                // The body tilts the full lean angle; the view counter-rolls so it only tilts part of the way.
-                float counterRoll = Lean * CurrentLeanAngle() * (1f - cameraRollScale);
-                cameraPivot.localRotation = Quaternion.Euler(0f, 0f, counterRoll) * Quaternion.Euler(-Pitch, 0f, 0f);
-            }
+            // The camera hangs off the lean pivot, so what you see is exactly what the hitbox does.
+            if (cameraPivot != null) cameraPivot.localRotation = Quaternion.Euler(-Pitch, 0f, 0f);
         }
 
         // ------------------------------------------------------------------ movement
