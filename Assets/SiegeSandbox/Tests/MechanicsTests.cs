@@ -59,6 +59,7 @@ namespace SiegeSandbox.Tests
             yield return null;
             Assert.AreEqual(4f / 3f, weapon.cam.aspect, 0.01f);
             Assert.AreEqual(1f, weapon.cam.rect.width, 0.001f);
+            Assert.IsFalse(GameSettings.BackdropVisible, "a stretched picture fills the window, so there are no bars to paint");
 
             // 4:3 with black bars: the picture keeps its shape and leaves the sides empty (on a wider window).
             GameSettings.stretch = false;
@@ -68,6 +69,7 @@ namespace SiegeSandbox.Tests
             {
                 Assert.Less(weapon.cam.rect.width, 0.99f);
                 Assert.AreEqual(4f / 3f, weapon.cam.aspect, 0.03f);
+                Assert.IsTrue(GameSettings.BackdropVisible, "the bars are painted black rather than left as they were");
             }
 
             // Sensitivity and lean mode reach the player.
@@ -87,6 +89,7 @@ namespace SiegeSandbox.Tests
             yield return null;
             yield return null;
             Assert.AreEqual(window, weapon.cam.aspect, 0.02f);
+            Assert.IsFalse(GameSettings.BackdropVisible, "no bars once the picture follows the window again");
             Assert.IsTrue(GameSettings.rawMouse, "mouse acceleration is off unless you turn it on");
             Assert.IsTrue(player.toggleLean);
         }

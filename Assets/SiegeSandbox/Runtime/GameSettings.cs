@@ -126,11 +126,13 @@ namespace SiegeSandbox
             {
                 if (cam.rect != full) cam.rect = full;
                 cam.ResetAspect();
+                ShowBackdrop(false);
             }
             else if (stretch)
             {
                 if (cam.rect != full) cam.rect = full;
                 cam.aspect = target; // drawn for this shape, then pulled to fit the window
+                ShowBackdrop(false);
             }
             else
             {
@@ -139,7 +141,42 @@ namespace SiegeSandbox
                     : new Rect(0f, (1f - window / target) * 0.5f, 1f, window / target);
                 if (cam.rect != r) cam.rect = r;
                 cam.ResetAspect();
+                ShowBackdrop(true);
             }
+        }
+
+        static Camera backdrop;
+
+        /// <summary>True while the black bars are being painted (for tests).</summary>
+        public static bool BackdropVisible { get { return backdrop != null && backdrop.gameObject.activeSelf; } }
+
+        /// <summary>
+        /// The bars beside a letterboxed picture have to be painted by something. A camera only
+        /// draws inside its own rectangle, and nothing clears the rest of the window: whatever was
+        /// there stays, so the HUD and the previous picture smear across the bars. This camera
+        /// sees nothing and draws first, so all it does is fill the window with black.
+        /// </summary>
+        static void ShowBackdrop(bool on)
+        {
+            if (!on)
+            {
+                if (backdrop != null && backdrop.gameObject.activeSelf) backdrop.gameObject.SetActive(false);
+                return;
+            }
+            if (backdrop == null)
+            {
+                GameObject go = new GameObject("[Backdrop]");
+                Object.DontDestroyOnLoad(go);
+                backdrop = go.AddComponent<Camera>();
+                backdrop.clearFlags = CameraClearFlags.SolidColor;
+                backdrop.backgroundColor = Color.black;
+                backdrop.cullingMask = 0;      // sees nothing
+                backdrop.depth = -100f;        // drawn before every other camera
+                backdrop.useOcclusionCulling = false;
+                backdrop.allowHDR = false;
+                backdrop.allowMSAA = false;
+            }
+            if (!backdrop.gameObject.activeSelf) backdrop.gameObject.SetActive(true);
         }
     }
 }
